@@ -34,6 +34,15 @@ This lab exists to close the gap between **knowing** security concepts and **doi
 | **Proxmox VE server** | Hypervisor hosting the SIEM, endpoints, and attack VMs |
 | **Ubiquiti UDR** | Perimeter firewall, VLAN segmentation, IDS/IPS |
 | **Cisco Catalyst switch** | Core switching, VLAN trunking, SPAN port for traffic capture |
+| **Suricata sensor (Proxmox VM)** | Passive IDS on a SPAN port with custom rules and AlienVault OTX threat intel |
+
+### 🛡️ Layered detection
+
+| Layer | Placement | Role |
+|---|---|---|
+| **UDR IPS** | Inline at the perimeter | Blocks known-bad traffic using Ubiquiti-managed signatures |
+| **Suricata IDS** | Passive, internal (SPAN) | Alerts on internal traffic using ET Open, custom rules, and OTX IoCs |
+| **SIEM** | Central | Correlates both sources into a single investigation view |
 
 Network diagram and VLAN plan: [`docs/architecture`](docs/architecture)
 
@@ -42,7 +51,7 @@ Network diagram and VLAN plan: [`docs/architecture`](docs/architecture)
 - [x] Repository structure and documentation standards
 - [ ] **Phase 1: Foundation.** Network segmentation, VLANs, isolated attack zone
 - [ ] **Phase 2: Visibility.** SIEM deployment, endpoint agents, log ingestion
-- [ ] **Phase 3: Detection.** Baseline alerts, custom rules, network IDS
+- [ ] **Phase 3: Detection.** UDR IPS, Suricata sensor with OTX threat intel, custom rules
 - [ ] **Phase 4: Adversary simulation.** Run attacks and map them to MITRE ATT&CK
 - [ ] **Phase 5: Response.** Triage runbooks, SOAR automation, containment
 - [ ] **Phase 6: Reporting.** Full incident reports with timeline, IoCs, and lessons learned
