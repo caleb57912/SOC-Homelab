@@ -2,10 +2,10 @@
 
 # 🛡️ SOC Homelab
 
-**A working Security Operations Center built on my own hardware, used to practice every part of a SOC analyst's job.**
+**A Security Operations Center segment defending my real home network, run like a production SOC.**
 
-<img src="https://img.shields.io/badge/Status-In_Progress-F2A900?style=for-the-badge">
-<img src="https://img.shields.io/badge/Proxmox-E57000?style=for-the-badge&logo=proxmox&logoColor=white">
+<img src="https://img.shields.io/badge/Status-Phase_1:_Foundation-F2A900?style=for-the-badge">
+<img src="https://img.shields.io/badge/SIEM-Splunk-000000?style=for-the-badge&logo=splunk&logoColor=white">
 <img src="https://img.shields.io/badge/MITRE_ATT%26CK-Mapped-C8202F?style=for-the-badge">
 
 </div>
@@ -14,65 +14,124 @@
 
 ## 🎯 Mission
 
-Build, attack, and defend a real network end to end, then document it the way a SOC would: from the first log to the final incident report.
+Monitor, detect, and respond to real activity on a live network, and document every case the way a SOC analyst would.
 
-This lab exists to close the gap between **knowing** security concepts and **doing** security work. Certifications prove the knowledge. This repo is meant to show the hands-on part: detections I wrote, alerts I triaged, and incidents I investigated and wrote up.
+This isn't an attack lab with staged victims. It's a dedicated SOC segment watching my actual home network: real endpoints, real DNS, real firewall and IDS events. Every alert is triaged, given a verdict, investigated, written up, and used to tune the detection.
 
 ## 💡 Why this project
 
 | | |
 |---|---|
-| 🧠 **Learn the full role** | Cover the whole analyst workflow (monitoring, triage, investigation, response, reporting), not just tool installation |
-| 🔁 **Build → Attack → Detect → Respond** | Every detection is tested against a real, simulated attack, and every alert gets a documented investigation |
-| 🗺️ **Speak the industry's language** | Map attacks and detections to MITRE ATT&CK |
-| 📂 **Show the work** | Every build step, config, rule, and report lives here so the process is fully transparent |
+| 🧠 **Real data, real cases** | Alerts come from a live network, not scripted attacks, so triage involves the same noise and judgment calls a real SOC faces |
+| 🔁 **The analyst loop** | Detect → Triage (TP / FP / benign TP) → Investigate → Write up → Tune |
+| 🗺️ **Industry language** | Detections and findings are mapped to MITRE ATT&CK |
+| 🧰 **Industry tooling** | Splunk, the SIEM most often named in SOC job postings, plus a full case management and SOAR pipeline |
+| 📂 **Show the work** | Every use case, search, case file, and weekly report lives in this repo |
 
-## 🏗️ Lab hardware
+## 🏗️ Architecture
 
-| Component | Role |
+```
+                    Internet
+                       │
+              ┌────────┴────────┐
+              │   Ubiquiti UDR   │  Firewall · IDS/IPS · VLANs · WiFi
+              └────────┬────────┘
+                       │ trunk
+              ┌────────┴────────┐
+              │ Cisco Catalyst  │  L2 only · SPAN ──────────┐
+              │      3750       │                           │
+              └───┬─────────┬───┘                           │
+                  │         │                               │
+          Wired endpoint   Proxmox VE ◄── mirrored traffic ─┘
+                           │
+                 ┌─────────┴─────────┐
+                 │  SOC VLAN 30      │  10.30.0.0/24
+                 │  (isolated zone)  │
+                 └───────────────────┘
+```
+
+**SOC VLAN firewall policy:** SOC → Internet allowed · SOC → home networks blocked · home → SOC on required ports only
+
+### SOC segment
+
+| VM | Role |
 |---|---|
-| **Proxmox VE server** | Hypervisor hosting the SIEM, endpoints, and attack VMs |
-| **Ubiquiti UDR** | Perimeter firewall, VLAN segmentation, IDS/IPS |
-| **Cisco Catalyst switch** | Core switching, VLAN trunking, SPAN port for traffic capture |
-| **Suricata sensor (Proxmox VM)** | Passive IDS on a SPAN port with custom rules and AlienVault OTX threat intel |
+| **SPLUNK01** | SIEM: every log source lands here |
+| **WAZUH01** | Wazuh manager: endpoint agents, FIM, vulnerability detection → Splunk |
+| **SENSOR01** | Zeek + Suricata on the switch SPAN feed |
+| **DNS01** | DNS resolver logging every device's queries |
+| **SHUFFLE01** | SOAR: alert enrichment and case creation |
+| **THEHIVE01** | Case management |
+| **VELO01** | Velociraptor for endpoint forensics and triage |
 
-### 🛡️ Layered detection
+### Alert pipeline
 
-| Layer | Placement | Role |
+```
+Splunk alert → Shuffle → Enrichment (VirusTotal, AbuseIPDB) → TheHive case → Velociraptor (if endpoint evidence needed)
+```
+
+### Telemetry sources
+
+Endpoint Sysmon + Wazuh agents · UDR firewall, IDS/IPS, DHCP & WiFi events · Switch syslog · Hypervisor auth logs · VPN logs · DNS query logs · Zeek & Suricata
+
+## 🧰 Stack
+
+| Tool | Purpose | Status |
 |---|---|---|
-| **UDR IPS** | Inline at the perimeter | Blocks known-bad traffic using Ubiquiti-managed signatures |
-| **Suricata IDS** | Passive, internal (SPAN) | Alerts on internal traffic using ET Open, custom rules, and OTX IoCs |
-| **SIEM** | Central | Correlates both sources into a single investigation view |
-
-Network diagram and VLAN plan: [`docs/architecture`](docs/architecture)
+| Splunk | SIEM | 🔜 Planned |
+| Wazuh | Endpoint agents, FIM, vulnerability detection | 🔜 Planned |
+| Zeek + Suricata | Network monitoring and IDS | 🔜 Planned |
+| Pi-hole / AdGuard Home | DNS logging | 🔜 Planned |
+| Shuffle | SOAR | 🔜 Planned |
+| TheHive | Case management | 🔜 Planned |
+| Velociraptor | DFIR | 🔜 Planned |
+| Atomic Red Team | Benign detection validation on my own endpoint | 🔜 Planned |
 
 ## 🧭 Roadmap
 
 - [x] Repository structure and documentation standards
-- [ ] **Phase 1: Foundation.** Network segmentation, VLANs, isolated attack zone
-- [ ] **Phase 2: Visibility.** SIEM deployment, endpoint agents, log ingestion
-- [ ] **Phase 3: Detection.** UDR IPS, Suricata sensor with OTX threat intel, custom rules
-- [ ] **Phase 4: Adversary simulation.** Run attacks and map them to MITRE ATT&CK
-- [ ] **Phase 5: Response.** Triage runbooks, SOAR automation, containment
-- [ ] **Phase 6: Reporting.** Full incident reports with timeline, IoCs, and lessons learned
+- [x] Design finalized
+- [ ] **Phase 1: Foundation.** SOC VLAN, switch trunking, build the SOC VMs
+- [ ] **Phase 2: Telemetry.** Endpoint agents and every network log source searchable in Splunk
+- [ ] **Phase 3: Baseline.** Document a normal week; baseline searches and dashboards
+- [ ] **Phase 4: Use-case loop.** Build a detection → triage → investigate → write up → tune (ongoing)
+- [ ] **Phase 5: Reporting.** Weekly SOC reports and final packaging
+
+### Planned use cases
+
+| Category | Examples |
+|---|---|
+| 🔐 Authentication | Failed logins to the hypervisor or VPN, logins from new IPs |
+| 🌐 Network | New devices joining, WAN scanning, outbound traffic spikes, IDS alerts |
+| 🔎 DNS | IoT devices calling new domains, malicious or newly registered domains |
+| 💻 Endpoint | New services or scheduled tasks, new local admins, encoded PowerShell, Run-key persistence |
+| 🩹 Vulnerability | Vulnerable software detected by Wazuh |
+| ⚙️ Infrastructure | Switch configuration changes |
 
 ## 📁 Repository map
 
 | Folder | What's inside |
 |---|---|
 | [`docs/`](docs) | Architecture, build log, analyst runbooks |
-| [`infrastructure/`](infrastructure) | Proxmox, network, and VM documentation |
-| [`siem/`](siem) | SIEM configuration and dashboards |
-| [`detections/`](detections) | Custom detection rules |
-| [`attack-simulation/`](attack-simulation) | Attack scenarios and ATT&CK mapping |
-| [`incident-reports/`](incident-reports) | Full incident investigations |
+| [`infrastructure/`](infrastructure) | Hypervisor, network, and VM documentation |
+| [`siem/splunk/`](siem/splunk) | Searches, saved alerts, dashboards |
+| [`siem/wazuh/`](siem/wazuh) | Agent configuration and rules |
+| [`detections/`](detections) | Detection rules (Splunk, Sigma, Suricata) |
+| [`detection-validation/`](detection-validation) | Benign Atomic Red Team tests that prove detections fire |
+| [`cases/`](cases) | One folder per worked case: ticket, report, evidence |
+| [`reports/weekly/`](reports/weekly) | Weekly SOC reports |
 | [`threat-intel/`](threat-intel) | IoCs and threat intelligence notes |
-| [`automation/`](automation) | SOAR playbooks and scripts |
+| [`automation/`](automation) | Shuffle playbooks and scripts |
+| [`ir/velociraptor/`](ir/velociraptor) | Velociraptor artifacts and collections |
 | [`screenshots/`](screenshots) | Evidence supporting the documentation |
 
-## 🔒 A note on sanitization
+## 🔒 Privacy & sanitization
 
-All configs, logs, and screenshots are scrubbed of public IPs, credentials, and other identifying details before they're published. Redacted values appear as `<REDACTED>`.
+This SOC monitors a real household network. Before anything is published:
+
+- Public IPs, hostnames, credentials, and keys are removed
+- Other household members' devices, activity, and DNS queries are redacted
+- Redacted values appear as `<REDACTED>`
 
 ---
 
