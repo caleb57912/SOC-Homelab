@@ -1,0 +1,6 @@
+*.pem
+*.key
+*.ovpn
+.env
+*secret*
+*.bak
