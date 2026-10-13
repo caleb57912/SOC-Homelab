@@ -25,8 +25,8 @@ This isn't an attack lab with staged victims. It's a dedicated SOC segment watch
 | 🧠 **Real data, real cases** | Alerts come from a live network, not scripted attacks, so triage involves the same noise and judgment calls a real SOC faces |
 | 🔁 **The analyst loop** | Detect → Triage (TP / FP / benign TP) → Investigate → Write up → Tune |
 | 🗺️ **Industry language** | Detections and findings are mapped to MITRE ATT&CK |
-| 🧰 **Industry tooling** | Splunk, the SIEM most often named in SOC job postings, plus a full case management and SOAR pipeline |
-| 📂 **Show the work** | Every use case, search, case file, and weekly report lives in this repo |
+| 🧰 **Industry tooling** | Splunk, the SIEM most often named in SOC job postings, plus threat intel, SOAR, case management, and DFIR |
+| 📂 **Show the work** | Every use case, search, case file, and report lives in this repo |
 
 ## 🏗️ Architecture
 
@@ -46,7 +46,7 @@ This isn't an attack lab with staged victims. It's a dedicated SOC segment watch
                            │
                  ┌─────────┴─────────┐
                  │  SOC VLAN 30      │  10.30.0.0/24
-                 │  (isolated zone)  │
+                 │  8 systems        │
                  └───────────────────┘
 ```
 
@@ -54,56 +54,66 @@ This isn't an attack lab with staged victims. It's a dedicated SOC segment watch
 
 ### SOC segment
 
-| VM | Role |
+| System | Role |
 |---|---|
 | **SPLUNK01** | SIEM: every log source lands here |
+| **DNS01** | Pi-hole: logs every device's DNS queries |
 | **WAZUH01** | Wazuh manager: endpoint agents, FIM, vulnerability detection → Splunk |
+| **MISP01** | Threat intel platform: IoC feeds for enrichment and matching |
 | **SENSOR01** | Zeek + Suricata on the switch SPAN feed |
-| **DNS01** | DNS resolver logging every device's queries |
-| **SHUFFLE01** | SOAR: alert enrichment and case creation |
 | **THEHIVE01** | Case management |
+| **SHUFFLE01** | SOAR: alert enrichment and case creation |
 | **VELO01** | Velociraptor for endpoint forensics and triage |
 
 ### Alert pipeline
 
 ```
-Splunk alert → Shuffle → Enrichment (VirusTotal, AbuseIPDB) → TheHive case → Velociraptor (if endpoint evidence needed)
+Splunk alert → Shuffle → Enrichment (MISP, VirusTotal, AbuseIPDB) → TheHive case → Velociraptor (if endpoint evidence needed)
 ```
 
 ### Telemetry sources
 
-Endpoint Sysmon + Wazuh agents · UDR firewall, IDS/IPS, DHCP & WiFi events · Switch syslog · Hypervisor auth logs · VPN logs · DNS query logs · Zeek & Suricata
+Endpoint Sysmon + Splunk UF + Wazuh agents · UDR firewall, IDS/IPS, DHCP & WiFi events · Switch syslog · Hypervisor auth logs · VPN logs · DNS query logs · Zeek & Suricata
 
 ## 🧰 Stack
 
 | Tool | Purpose | Status |
 |---|---|---|
 | Splunk | SIEM | 🔜 Planned |
+| Pi-hole | DNS logging | 🔜 Planned |
 | Wazuh | Endpoint agents, FIM, vulnerability detection | 🔜 Planned |
+| MISP | Threat intelligence | 🔜 Planned |
 | Zeek + Suricata | Network monitoring and IDS | 🔜 Planned |
-| Pi-hole / AdGuard Home | DNS logging | 🔜 Planned |
-| Shuffle | SOAR | 🔜 Planned |
 | TheHive | Case management | 🔜 Planned |
+| Shuffle | SOAR | 🔜 Planned |
 | Velociraptor | DFIR | 🔜 Planned |
 | Atomic Red Team | Benign detection validation on my own endpoint | 🔜 Planned |
 
 ## 🧭 Roadmap
 
+| Phase | Steps | Gate |
+|---|---|---|
+| **1 · Foundation** | Update Proxmox · Templates · UDR VLAN 30 · 3750 trunks · VLAN-aware bridge · Smoke test · Build the 8 systems | All 8 up on VLAN 30, remote access unchanged |
+| **2 · Telemetry + intel** | Splunk · Pi-hole · UDR, switch, Proxmox & VPN logs · Sysmon + UF · Wazuh · MISP · Sensor + SPAN | Every source searchable in Splunk |
+| **3 · Response + baseline** | TheHive · Shuffle workflow · Velociraptor · A baseline week | A test alert reaches TheHive with enrichment |
+| **4 · Use-case loop** | Failed Proxmox logins → New device → Vulnerable software → IoC match | Ongoing |
+| **5 · Reporting** | Weekly SOC report · Monthly threat brief · README and resume after 4–5 cases | — |
+
 - [x] Repository structure and documentation standards
 - [x] Design finalized
-- [ ] **Phase 1: Foundation.** SOC VLAN, switch trunking, build the SOC VMs
-- [ ] **Phase 2: Telemetry.** Endpoint agents and every network log source searchable in Splunk
-- [ ] **Phase 3: Baseline.** Document a normal week; baseline searches and dashboards
-- [ ] **Phase 4: Use-case loop.** Build a detection → triage → investigate → write up → tune (ongoing)
-- [ ] **Phase 5: Reporting.** Weekly SOC reports and final packaging
+- [ ] Phase 1: Foundation
+- [ ] Phase 2: Telemetry + intel
+- [ ] Phase 3: Response + baseline
+- [ ] Phase 4: Use-case loop
+- [ ] Phase 5: Reporting
 
-### Planned use cases
+### Use-case library
 
 | Category | Examples |
 |---|---|
 | 🔐 Authentication | Failed logins to the hypervisor or VPN, logins from new IPs |
 | 🌐 Network | New devices joining, WAN scanning, outbound traffic spikes, IDS alerts |
-| 🔎 DNS | IoT devices calling new domains, malicious or newly registered domains |
+| 🔎 DNS & intel | IoC matches from MISP, IoT devices calling new domains, malicious or newly registered domains |
 | 💻 Endpoint | New services or scheduled tasks, new local admins, encoded PowerShell, Run-key persistence |
 | 🩹 Vulnerability | Vulnerable software detected by Wazuh |
 | ⚙️ Infrastructure | Switch configuration changes |
@@ -113,14 +123,14 @@ Endpoint Sysmon + Wazuh agents · UDR firewall, IDS/IPS, DHCP & WiFi events · S
 | Folder | What's inside |
 |---|---|
 | [`docs/`](docs) | Architecture, build log, analyst runbooks |
-| [`infrastructure/`](infrastructure) | Hypervisor, network, and VM documentation |
+| [`infrastructure/`](infrastructure) | Hypervisor, network, and system documentation |
 | [`siem/splunk/`](siem/splunk) | Searches, saved alerts, dashboards |
 | [`siem/wazuh/`](siem/wazuh) | Agent configuration and rules |
 | [`detections/`](detections) | Detection rules (Splunk, Sigma, Suricata) |
 | [`detection-validation/`](detection-validation) | Benign Atomic Red Team tests that prove detections fire |
 | [`cases/`](cases) | One folder per worked case: ticket, report, evidence |
-| [`reports/weekly/`](reports/weekly) | Weekly SOC reports |
-| [`threat-intel/`](threat-intel) | IoCs and threat intelligence notes |
+| [`reports/`](reports) | Weekly SOC reports and monthly threat briefs |
+| [`threat-intel/`](threat-intel) | MISP feeds, IoCs, and intel notes |
 | [`automation/`](automation) | Shuffle playbooks and scripts |
 | [`ir/velociraptor/`](ir/velociraptor) | Velociraptor artifacts and collections |
 | [`screenshots/`](screenshots) | Evidence supporting the documentation |
