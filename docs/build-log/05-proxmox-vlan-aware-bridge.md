@@ -1,21 +1,24 @@
 # 1.5 · VLAN-Aware Proxmox Bridge
 
-**Result:** VMs can join any VLAN with a single tag on their network card, and **zero existing services were disrupted**.
+**Result:** A VM joins any VLAN with one tag on its network card, and nothing already running on the host was disrupted.
 
-## What changed
-The hypervisor's main bridge (`vmbr0`) became an **802.1Q-aware switch**:
-- Untagged traffic (Proxmox management, VPN, game servers) stays on VLAN 1, unchanged
-- A VM with `tag=30` lands on the SOC network automatically
-- New VLANs never need another host network change
+```mermaid
+flowchart LR
+    V30[SOC VM<br/>tag 30] --> B[vmbr0<br/>VLAN-aware]
+    V1[Existing VMs<br/>untagged] --> B
+    B -->|eno1: VLAN 1 untagged + VLAN 30 tagged| SW[Catalyst trunk]
+```
 
-## Key decisions
-- **Made the change from the LAN, not over the VPN.** The VPN runs on this same host, so a failed bridge reload would have cut off remote access.
-- **Backed up first, used the validating GUI, and reviewed the diff** before applying. The rollback command was ready.
-- **Defense in depth:** the bridge allows VLANs, but the switch trunk (`1,30` only) and the router firewall decide what actually flows.
+## What I changed
+I made the host's main bridge (`vmbr0`) 802.1Q-aware. Untagged traffic (Proxmox management, my other VMs) stays on VLAN 1 exactly as before. A VM with `tag=30` lands on the SOC network. Future VLANs won't need another host network change, and every host network change is a chance to lose remote access.
 
-## Bonus finding
-Three unused NICs (`eno2`–`eno4`) are available, so the network sensor gets a **dedicated capture port**.
+## Decisions
+- **I made the change from the LAN, not over the VPN.** My VPN VM ran on this same host, so a failed bridge reload would have cut me off.
+- **I backed up the config, applied it through the GUI so it was validated, and reviewed the diff** with the rollback command ready.
+- **The bridge isn't my security boundary.** It permits VLANs, but the switch trunk (1 and 30 only) and the UDR firewall decide what actually flows.
 
-**Skills:** Linux bridging · VLAN tagging · safe change management
+I also confirmed three unused NICs on the host, so the network sensor gets a dedicated capture port later.
+
+**Skills:** Linux bridging · VLAN tagging · change management
 
 ➡️ [Deep dive](deep-dives/05-proxmox-vlan-aware-bridge.md)

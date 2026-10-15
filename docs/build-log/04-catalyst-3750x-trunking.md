@@ -1,29 +1,33 @@
 # 1.4 · Catalyst 3750-X: Recovery, Hardening and Trunking
 
-**Result:** VLAN 30 trunked through the core switch, and **three hidden risks found and fixed** along the way.
+**Result:** VLAN 30 trunked through my core switch to the Proxmox host. Along the way I found and fixed three risks I hadn't planned for.
 
-## Recovery and hardening
-- The enable password was lost, so I recovered access through the **console boot loader** (MODE button → `flash_init` → bypass the startup config → restore it with privileged access)
-- Set a new hashed `enable secret`, **SSH-only** management, and regenerated a 2048-bit SSH key
+```mermaid
+flowchart LR
+    U[UDR] ===|trunk: native 1, tagged 30| G1[Gi1/0/1]
+    subgraph SW[Catalyst 3750-X]
+      G1
+      G5[Gi1/0/5]
+    end
+    G5 ===|trunk: native 1, tagged 30| P[Proxmox]
+```
 
-## Pre-change audit findings
-| Finding | Risk | Fix |
+## Getting back in
+I'd lost the enable password from when I first set the switch up. I recovered it through the console boot loader, set a new hashed `enable secret`, regenerated the SSH key, and made management SSH-only.
+
+## What the audit turned up
+Before touching the config, I audited the switch:
+
+| Finding | Risk | What I did |
 | --- | --- | --- |
-| **Layer 2 loop:** two cables between the router and the switch | Spanning tree was the only thing preventing a broadcast storm | Shut the port, removed the cable |
-| **`ip routing` enabled** on the switch | Inter-VLAN traffic could **bypass the firewall** | `no ip routing` |
-| **VTP server mode**, blank domain | Could overwrite or adopt another switch's VLANs | `vtp mode transparent` |
-| SHA-1-only SSH (platform limit) | Weak management crypto | Accepted; restrict management access |
+| Two cables between the router and the switch: a Layer 2 loop | Spanning tree was the only thing preventing a broadcast storm | Shut the port and pulled the cable |
+| `ip routing` enabled | Traffic between VLANs could bypass the UDR firewall | `no ip routing` |
+| VTP server mode | Could overwrite or adopt another switch's VLANs | `vtp mode transparent` |
 
-The loop was spotted from a single clue: a port in spanning-tree role **Backup / Blocking** with no MAC addresses learned. *Backup* means the switch was receiving its own BPDUs.
+I spotted the loop from one port in spanning-tree role **Backup**. A switch only assigns that role when it hears its own BPDUs, which means the port leads back to itself.
 
 ## The change
-```
-interface Gi1/0/1   (to router)  /  Gi1/0/5 (to Proxmox)
- switchport mode trunk
- switchport trunk allowed vlan 1,30
- switchport nonegotiate
-```
-Protected with **`reload in 10`** (an automatic rollback if I locked myself out), then verified and saved.
+Both trunks allow only VLANs 1 and 30, with trunk negotiation off. My SSH session ran over one of the ports I was changing, so I set `reload in 10` first: if I'd locked myself out, the switch would have rebooted into the old config.
 
 **Skills:** Cisco IOS · password recovery · STP troubleshooting · 802.1Q · change management
 

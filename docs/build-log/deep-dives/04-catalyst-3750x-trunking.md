@@ -1,107 +1,109 @@
-# Phase 1 · Step 1.4: Catalyst 3750-X Recovery, Hardening and VLAN Trunking
+# 1.4 · Catalyst 3750-X: Recovery, Hardening and Trunking (Deep Dive)
 
-**Status:** Complete
-**Goal:** Carry the SOC VLAN (30) from the UniFi UDR through the core switch to the Proxmox host, without disrupting the existing home network.
+The Catalyst sits between the UDR and the Proxmox server, so VLAN 30 has to cross it. Before I could configure it, I had to get back into it, and before I changed anything, I audited it.
 
-## Summary
-
-The Cisco Catalyst sits between the UDR and the Proxmox server, so VLAN 30 has to cross it. Before the switch could be configured, it needed a **password recovery**, **SSH restored and hardened**, and a **pre-change audit**. The audit found a **Layer 2 loop**, **inter-VLAN routing enabled**, and a **risky VTP mode**. All three were fixed in the same change window, protected by a timed rollback.
-
-**Final state:**
-
-```
-UDR Port 1 ──trunk (native 1, tagged 30)── Gi1/0/1 [3750-X] Gi1/0/5 ──trunk (native 1, tagged 30)── Proxmox
-                                                      Gi1/0/3  shutdown (former loop)
-```
-
----
-
-## Part A: The switch
-
-### A1. Hardware and software
+## The switch
 
 | Item | Value |
 | --- | --- |
-| Model | Cisco Catalyst **WS-C3750X-24T-E**: 24× 10/100/1000 copper, network-module slot (1G/10G uplinks) |
-| IOS | **15.2(4)E10**, C3750E-UNIVERSALK9 (crypto image, supports SSHv2) |
-| Role | Layer 2 access/distribution switch between the UDR and the wired hosts |
-| Management | SVI `Vlan1`, in-band on the Main network; dedicated `Fa0` management port disabled |
+| Model | WS-C3750X-24T-E |
+| IOS | 15.2(4)E10 (crypto image, final release for the platform) |
+| Role | Layer 2 switch between the UDR and the wired hosts |
+| Management | `Vlan1` SVI on the Main network |
 
-### A2. Port map (from the pre-change audit)
+I mapped every port by checking the MAC address tables on both the switch and the UDR, not by the port descriptions. That's how I found Gi1/0/3: its description said "Con to 2nd Computer", but it was actually a second cable to the router.
 
-| Port | Description | Connected to | How it was identified |
+| Port | Connected to |
+| --- | --- |
+| Gi1/0/1 | UDR Port 1 |
+| Gi1/0/3 | UDR Port 2 (the loop) |
+| Gi1/0/5 | Proxmox host |
+| Gi1/0/6–24 | Nothing, already shut |
+
+## Getting back in
+
+I'd set the switch up years ago and lost the enable secret. I recovered it over the console cable (9600 8N1) with Cisco's boot-loader procedure:
+
+1. Held MODE at power-on to reach the `switch:` prompt
+2. `flash_init`, then renamed `config.text` so the switch would boot without its startup config
+3. Booted, skipped the setup dialog, renamed the file back and copied it into the running config, which restored my config with privileged access
+4. Set a new hashed `enable secret`, removed the legacy `enable password`, and saved
+
+SSH was refused afterwards, because the RSA host key is stored separately from `config.text`. I regenerated it:
+
+```
+hostname MySwitch
+ip domain-name soc.lan
+crypto key generate rsa modulus 2048
+ip ssh version 2
+line vty 0 15
+ transport input ssh
+ login local
+```
+
+Management is SSH-only now. The switch only supports SHA-1 key exchange, which modern OpenSSH turns off by default, so I connect with legacy flags. There's no newer IOS for this platform, so I'll limit who can reach management with a VTY `access-class` instead.
+
+This also made it obvious how much physical access matters: anyone with the console port and the MODE button can do what I just did.
+
+## The audit
+
+### Layer 2 loop
+
+Gi1/0/3 showed spanning-tree role **Backup**, state **BLK**, with no MAC addresses learned.
+
+```mermaid
+flowchart LR
+    subgraph UDR[UDR internal switch]
+      P1[Port 1]
+      P2[Port 2]
+    end
+    subgraph SW[Catalyst]
+      G1[Gi1/0/1<br/>Root/forwarding]
+      G3[Gi1/0/3<br/>Backup/BLK]
+    end
+    G1 --- P1
+    P2 --- G3
+    G1 -.->|1. BPDU out| P1
+    P1 -.->|2. flooded inside the UDR| P2
+    P2 -.->|3. switch hears its own BPDU| G3
+```
+
+In Rapid PVST+, a port gets the Backup role when the switch receives its own BPDUs on it, which only happens if the port loops back to the same switch. Here the loop went out Gi1/0/1, through the UDR's internal switch, and back in Gi1/0/3. Spanning tree was blocking it, but any re-convergence (like converting Gi1/0/1 to a trunk) could have let it forward briefly. I shut Gi1/0/3, relabeled it and pulled the cable.
+
+### Routing on the switch
+
+`ip routing` was enabled. A Layer 3 switch with SVIs on multiple VLANs can route between them by itself:
+
+```mermaid
+flowchart LR
+    A[VLAN 1 host] --> SW{Catalyst<br/>ip routing ON}
+    SW -->|routed locally| B[VLAN 30 host]
+    SW -.->|never reaches| FW[UDR zone firewall]
+```
+
+That would have let traffic between Main and the SOC skip my zone firewall entirely. Only Vlan1 had an IP, and `ip default-gateway` was already set, so I turned routing off. Now every inter-VLAN packet goes through the UDR, where it's filtered and logged.
+
+### VTP
+
+The switch was a VTP server with a blank domain and revision 40. Connected to another VTP switch, it could overwrite that switch's VLANs or adopt foreign ones. I set it to transparent.
+
+### Leftovers
+
+Twelve VLANs from an old lab are still defined. They're harmless with the trunks restricted, and I'll clean them up later.
+
+## The trunk change
+
+| Port | Mode | Native | Allowed |
 | --- | --- | --- | --- |
-| Gi1/0/1 | Trunk to UDR | UDR LAN Port 1 | UDR MACs learned on the port; the UDR port manager listed "Cisco Switch" |
-| Gi1/0/3 | UNUSED, was loop | UDR LAN Port 2 (second cable) | Spanning tree **Backup / Blocking** (see A5) |
-| Gi1/0/5 | Trunk to pve | Proxmox host (Dell PowerEdge) | Dell OUI MAC learned on the port |
-| Gi1/0/6 – 24 | — | Nothing | Already administratively **disabled** (unused-port hardening) |
+| Gi1/0/1 (UDR) | 802.1Q, DTP off | 1 | 1, 30 |
+| Gi1/0/5 (pve) | 802.1Q, DTP off | 1 | 1, 30 |
 
-Identifying ports by **MAC address tables on both devices**, rather than by port labels or memory, is what exposed the mislabeled Gi1/0/3: it was described as "Con to 2nd Computer" but actually looped back to the router.
+I kept VLAN 1 native and untagged so Proxmox management and the rest of the Main network didn't change at all. I only added VLAN 30 as tagged. I set the allowed list explicitly because the default would carry every VLAN on the switch to the router and the hypervisor. `nonegotiate` turns off DTP, so nothing plugged in can talk a port into trunking.
 
-### A3. Credential recovery
-
-The switch had been configured years earlier and the enable secret was lost. Recovery used Cisco's documented boot-loader procedure over the **console cable (9600 8N1, no flow control)**:
-
-1. Hold **MODE** while powering on → `switch:` boot loader. The banner confirmed *"password-recovery mechanism is enabled"*.
-2. `flash_init`, then rename `config.text` to `config.text.old` so the switch boots without its startup config.
-3. Boot, decline the setup dialog, then rename the file back and `copy flash:config.text system:running-config`. The original config is restored, now with privileged access.
-4. Set a new `enable secret` (strong hash), remove any legacy `enable password`, and `write memory`.
-
-**Lessons:**
-
-- **Physical access means full control.** Anyone with the console port and the MODE button can do this. The switch belongs in a physically secured location; alternatively, `no service password-recovery` can be set, at the cost of a factory reset being the only recovery path.
-- **Recovery doesn't restore the SSH host key.** The RSA keypair is stored separately from `config.text`, so after recovery SSH was refused (`Connection refused`) until the key was regenerated.
-
-### A4. Management-plane hardening
-
-| Control | Configuration | Why |
-| --- | --- | --- |
-| Enable secret | `enable secret …` (hashed); `no enable password` | `enable password` is reversible or plaintext |
-| SSH only | `line vty 0 15` / `transport input ssh` / `login local` | Telnet sends credentials in clear text |
-| SSHv2 + new key | `ip domain-name …` / `crypto key generate rsa modulus 2048` / `ip ssh version 2` | Regenerated after recovery; 2048-bit replaces any legacy short key |
-| Unused ports | Gi1/0/6 – 24 and Gi1/0/3 `shutdown` | Nothing can be plugged in unnoticed |
-
-**Known limitation (finding):** the switch only offers **SHA-1 key exchange** (`diffie-hellman-group14-sha1`). Modern OpenSSH disables it by default, so connections need per-host legacy flags. 15.2(4)E10 is the final release for this platform, so the mitigation is **restricting who can reach management**: a VTY `access-class` limited to the admin workstation. That's tracked as a follow-up.
-
-### A5. Pre-change audit findings
-
-| # | Finding | Risk | Fix |
-| --- | --- | --- | --- |
-| 1 | **Layer 2 loop:** two cables between the UDR and the switch (UDR P1 → Gi1/0/1 and UDR P2 → Gi1/0/3). Gi1/0/3 was spanning-tree role **Backup, state BLK**. | Only spanning tree prevented a broadcast storm. During any re-convergence (such as converting Gi1/0/1 to a trunk), the loop could briefly forward. | `shutdown` Gi1/0/3, relabel it, physically remove the cable |
-| 2 | **`ip routing` enabled** on the switch | A Layer 3 switch with SVIs can route between VLANs and **bypass the UDR's zone firewall** entirely | `no ip routing` (only Vlan1 had an IP; `ip default-gateway` already set) |
-| 3 | **VTP mode server**, blank domain, revision 40 | Could overwrite another switch's VLAN database, or adopt a foreign one, if ever connected to a VTP switch | `vtp mode transparent` |
-| 4 | **12 legacy VLANs** (DMZ, OSPF transit, guest, etc.) from a previous lab | Clutter; confusing during troubleshooting | Deferred: remove unused VLANs in a later cleanup |
-| 5 | **SHA-1-only SSH** | Weak management crypto | Accepted for now; restrict management access (A4) |
-
-**Why a "Backup" port means a loop:** in Rapid PVST+, the *Backup* role is assigned when a switch receives **its own BPDUs** on a port. That can only happen if the port leads back to the same switch, here through the UDR's internal LAN switch. A blocked port with no learned MAC addresses and a misleading description is easy to miss without checking spanning-tree state.
-
----
-
-## Part B: The trunk change
-
-### B1. Design
-
-| Port | Mode | Native VLAN | Allowed VLANs |
-| --- | --- | --- | --- |
-| Gi1/0/1 (to UDR) | 802.1Q trunk, DTP off | 1 (Main, untagged) | 1, 30 |
-| Gi1/0/5 (to pve) | 802.1Q trunk, DTP off | 1 (Main, untagged) | 1, 30 |
-
-- **Native VLAN 1 untagged** keeps all existing Main-network traffic, including Proxmox management and the VPN path, exactly as it was. Only VLAN 30 is added as tagged.
-- **Explicit allowed list (1, 30):** the switch has 12+ VLANs defined, and the default "allow all" would carry every one of them to the router and the hypervisor.
-- **`switchport nonegotiate`:** disables DTP, so a port can't be talked into trunking by a connected device (VLAN-hopping hardening).
-- **The UDR side matches:** UDR Port 1 is set to native *Default*, tagged *SOC only* (step 1.3).
-
-### B2. Change procedure (with rollback)
-
-The admin session itself crossed Gi1/0/1, the port being changed, so a mistake could cut off access. The change used a **timed rollback**:
+My SSH session crossed Gi1/0/1, the port I was changing, so I scheduled a rollback first and pasted the change as a single block so it would finish even if SSH dropped mid-way:
 
 ```
 reload in 10
-```
-
-If the session were lost and not recovered, the switch would reboot into the unchanged startup config after 10 minutes. The full change was pasted as one block so it would finish even if SSH dropped during spanning-tree re-convergence:
-
-```
 conf t
 interface Gi1/0/3
  description UNUSED - was loop to UDR port 2
@@ -129,14 +131,9 @@ no ip routing
 end
 ```
 
-After verification:
+Once I'd confirmed everything, I ran `reload cancel` and `write memory`.
 
-```
-reload cancel
-write memory
-```
-
-### B3. Verification
+## Verification
 
 ```
 MySwitch#show interfaces trunk
@@ -153,31 +150,11 @@ Gi1/0/1     1,30
 Gi1/0/5     1,30
 ```
 
-- [x] Both trunks up; only VLANs 1 and 30 allowed; both forwarding in spanning tree
-- [x] Gi1/0/3 disabled (loop removed)
-- [x] `no ip routing` in the running config
-- [x] Proxmox web UI and internet reachable from the workstation after the change
-- [x] `reload cancel` + `write memory`: change made permanent
+Both trunks are up and forwarding only VLANs 1 and 30, Gi1/0/3 is shut, routing is off, and the Proxmox UI and internet still work from my workstation.
 
-## Design decisions
+## Backlog
 
-1. **Audit before change.** Checking the MAC tables, spanning-tree state, routing and VTP before touching anything turned up three risks that weren't in the plan. Configuring the trunk blind could have triggered the latent loop.
-2. **Timed rollback instead of hoping.** `reload in` is the standard safety net when changing the path your own session uses.
-3. **The firewall decides, not the switch.** Turning off routing keeps the switch at Layer 2, so all inter-VLAN traffic goes through the UDR's zone policies (step 1.3), where it's filtered and logged.
-4. **Least privilege on trunks.** Only the VLANs that need to cross each link are allowed, and trunk negotiation is off.
-
-## Follow-ups
-
-- [ ] VTY `access-class` limiting SSH to the admin workstation
-- [ ] Remove the legacy VLANs (2, 3, 4, 10, 11, 69, 100–102, 200, 485, 486)
-- [ ] Send switch syslog to Splunk (step 2.3)
-- [ ] Back up the running config to the repo, with secrets scrubbed
-- [ ] SPAN session to the sensor NIC (step 2.7)
-
-## Skills demonstrated
-
-Cisco IOS · password recovery · management-plane hardening · 802.1Q trunking · Rapid PVST+ troubleshooting (loop detection via the Backup role) · VTP risk · Layer 3 switch security · change management with a timed rollback · MAC-table-based port discovery
-
-## Next
-
-**Step 1.5:** make the Proxmox bridge (`vmbr0`) VLAN-aware so VMs can be tagged into VLAN 30.
+- VTY `access-class` limiting SSH to my workstation
+- Remove the legacy VLANs
+- Back up the config to the repo with secrets scrubbed
+- SPAN session to the sensor NIC (step 2.7)

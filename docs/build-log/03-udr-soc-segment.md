@@ -1,24 +1,24 @@
 # 1.3 · SOC VLAN and Zone Firewall (UniFi UDR)
 
-**Result:** An isolated **SOC network (VLAN 30, 10.30.0.0/24)** that can watch the home network but can't reach into it.
+**Result:** An isolated SOC network (VLAN 30, 10.30.0.0/24) that can watch my home network but can't reach into it.
 
-## Why segment the SOC
-SOC tools ingest untrusted data all day (threat feeds, raw packets, logs from every device). If one is compromised, segmentation stops the attacker pivoting into the home network or taking over the router.
+## Why I segmented the SOC
+SOC tools ingest untrusted data all day: threat feeds, raw packets, and logs from every device. If one of them gets compromised, I don't want an attacker pivoting into the home network or taking over the router.
 
-## Firewall policy (least privilege)
-| From → To | Result |
-| --- | --- |
-| Home (Internal) → SOC | ✅ Allow (admin access, log forwarding) |
-| SOC → Home | ❌ Return traffic only |
-| SOC → Internet | ✅ Allow (updates, threat feeds) |
-| SOC → Router (Gateway) | DNS + NTP only, everything else **blocked and logged** |
-| SOC ↔ Guest/IoT, VPN, DMZ | ❌ Block |
+```mermaid
+flowchart LR
+    H[Home network] -->|allow| S[SOC VLAN 30]
+    S -->|allow| I[Internet]
+    S -->|DNS + NTP only| G[UDR itself]
+    S -.->|blocked| H
+    S -.->|blocked| Q[Guest / IoT]
+```
 
-## Key decisions
-- **Locked the SOC out of the router's own management.** By default SOC → Gateway was "Allow All". A compromised SOC VM could have reached the router's admin UI, and owning the router means owning every VLAN.
-- **Rule order matters:** the DNS/NTP Allow is evaluated before the Block (first match wins).
-- **Only the Block rule is logged.** Any hit means something tried to reach router management, so the rule doubles as a detection.
-- **Caught a backwards rule before saving.** My first draft allowed SOC → Home, which would have defeated the segmentation.
+## Decisions
+- **Locked the SOC out of the router's management.** SOC → Gateway defaulted to Allow All. Owning the router means owning every VLAN, so the SOC gets DNS and NTP from it and nothing else.
+- **Allow above block.** UniFi evaluates first match wins, so the DNS/NTP allow sits ahead of the block.
+- **I only log the block.** Nothing in the SOC should ever touch router management, so every hit on that rule is worth looking at.
+- **I caught a backwards rule before saving.** My first draft allowed SOC → Home, which would have defeated the point.
 
 **Skills:** network segmentation · zone-based firewalls · least privilege · rule ordering
 

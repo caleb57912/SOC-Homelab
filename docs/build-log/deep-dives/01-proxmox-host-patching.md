@@ -1,22 +1,21 @@
-# Phase 1 · Step 1.1: Proxmox Host Patching
+# 1.1 · Proxmox Host Patching (Deep Dive)
 
-**Status:** Complete
-**Goal:** Bring the hypervisor up to date before installing any SOC software on it. Security tooling shouldn't run on an unpatched host.
+I didn't want to install security tooling on a host I hadn't checked, so the first thing I did was look at the hypervisor's patch state.
 
-## Finding
+## What I found
 
-| Item | Before |
+| Item | State |
 | --- | --- |
-| Uptime | **337 days** without a reboot |
+| Uptime | 337 days |
 | Kernel | 6.8.12-9 |
 | `pve-manager` | 8.4.0 |
-| Updates | **Failing.** The Proxmox *enterprise* repository was enabled with no subscription, so `apt update` returned `401 Unauthorized`, and no updates (including security fixes) had been installed in months. |
+| Updates | Failing with `401 Unauthorized` |
 
-The host looked healthy in the UI, but its package source was broken. That kind of gap doesn't show up until someone checks.
+The enterprise repository was enabled without a subscription, so `apt update` had been failing quietly for months. No security fixes had been installed. Nothing in the UI pointed to it.
 
-## Fix
+## The fix
 
-Switched from the enterprise repository (subscription required) to the official **no-subscription** repository, staying on the same release (Proxmox VE 8 / Debian 12 *bookworm*):
+I disabled the enterprise and Ceph repositories and added the no-subscription repository for the same release (Proxmox VE 8 / Debian 12 bookworm):
 
 ```bash
 sed -i 's/^deb/#deb/' /etc/apt/sources.list.d/pve-enterprise.list
@@ -27,26 +26,27 @@ apt full-upgrade -y
 reboot
 ```
 
-**213 packages** were upgraded, including:
+I used `full-upgrade` rather than `upgrade` because Proxmox kernel updates pull in new packages, and plain `upgrade` holds those back. When the package manager asked about modified config files, I kept my local versions.
 
-| Component | Before → After | Relevance |
-| --- | --- | --- |
-| Kernel (`proxmox-kernel-6.8`) | 6.8.12-9 → **6.8.12-43** | 34 kernel releases of fixes |
-| `pve-manager` | 8.4.0 → **8.4.21** | Hypervisor management stack |
-| OpenSSH, OpenSSL / libssl3 | Multiple security releases | The host's exposed management services |
-| `qemu-server`, `pve-container`, `lxc-pve` | Updated | The VM and LXC runtimes hosting the SOC |
-| ZFS, GRUB, shim | Updated | Storage and boot chain |
-| `ca-certificates`, `tzdata`, glibc, systemd | Updated | Trust store, time zone data, core OS |
+213 packages were upgraded. The ones that mattered most:
+
+| Component | Change |
+| --- | --- |
+| Kernel | 6.8.12-9 → 6.8.12-43 |
+| `pve-manager` | 8.4.0 → 8.4.21 |
+| OpenSSH, OpenSSL | Several security releases |
+| `qemu-server`, `pve-container`, `lxc-pve` | The VM and container runtimes the SOC runs on |
+| ZFS, GRUB, shim | Storage and boot chain |
 
 ## Decisions
 
-- **`full-upgrade`, not `upgrade`:** Proxmox updates often add or replace dependencies (kernels in particular), and plain `upgrade` would hold those back.
-- **Stayed on Proxmox 8:** Debian 13 has been released (so bookworm now shows as *oldstable*), but a major-version upgrade mid-project is a separate, planned change, not something to bundle with patching.
-- **Kept local config files** whenever the package manager asked about a modified config, so the host's existing customizations survived.
-- **The reboot was scheduled while on-site:** the VPN runs on this host, so a failed boot would have cut off remote access.
-- **Autostart was proven:** all eight SOC systems had `onboot` set in step 1.7, so this reboot doubled as a recovery test.
+I stayed on Proxmox 8. Debian 13 is out, but a major-version upgrade in the middle of a build is its own change with its own backup and rollback plan.
 
-## Verification (after reboot)
+I waited until I was home to reboot. My VPN VM ran on this host at the time, so a failed boot would have cut off my only remote way in.
+
+By the time I rebooted, the eight SOC systems from step 1.7 existed with autostart enabled, so the reboot also tested that the whole SOC comes back on its own.
+
+## Verification
 
 ```
 $ uname -r
@@ -61,21 +61,9 @@ pve-manager/8.4.21/2606ac850d46da29 (running kernel: 6.8.12-43-pve)
 306 dns01      running     307 velo01     running
 ```
 
-- [x] `apt update` clean (no `401`)
-- [x] New kernel running
-- [x] Proxmox 8.4.21
-- [x] All 8 SOC systems came back up by themselves after the reboot
+`apt update` runs clean, the new kernel is live, and all eight SOC systems came back without intervention.
 
-## Follow-ups
+## Backlog
 
-- [ ] Patch on a regular schedule (monthly, or on critical advisories) and log each run in the build log
-- [ ] Forward Proxmox host logs to Splunk (step 2.3), so failed updates and auth events become visible instead of silent
-- [ ] Plan the Proxmox 8 → 9 upgrade as its own change, with a backup and rollback plan
-
-## Skills demonstrated
-
-Vulnerability and patch management · Linux package management · hypervisor maintenance · change planning (scheduling, rollback awareness) · recovery testing
-
-## Phase 1 complete ✅
-
-All Phase 1 steps (1.1 – 1.7) are done. The SOC network is segmented and verified, the host is patched, and eight systems are built, baselined and ready for Phase 2: telemetry.
+- Patch on a regular schedule and log each run here
+- Plan the Proxmox 8 → 9 upgrade as a separate change

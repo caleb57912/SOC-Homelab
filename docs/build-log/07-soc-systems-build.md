@@ -1,6 +1,6 @@
 # 1.7 · SOC Systems Build
 
-**Result:** **8 SOC systems** deployed on VLAN 30 from a script, verified and snapshotted, within a **24 GB RAM budget**.
+**Result:** Eight SOC systems deployed on VLAN 30 from a script, verified and snapshotted, inside a 24 GB RAM budget.
 
 | System | Type | IP | RAM | Role |
 | --- | --- | --- | --- | --- |
@@ -13,18 +13,12 @@
 | dns01 | LXC | 10.30.0.53 | 0.5 GB | DNS logging / sinkhole |
 | velo01 | LXC | 10.30.0.22 | 1 GB | Velociraptor DFIR |
 
-## Key decisions
-- **Scripted build:** one table drives one loop, so the whole SOC can be rebuilt from the document
-- **Fixed two gaps once, in a shared first-boot config:** installed the guest agent and disabled IPv6 (the source of the noisy block count from 1.6)
-- **Full clones, fixed RAM (no ballooning), autostart,** so production VMs don't depend on the template, the RAM budget is enforced, and the SOC survives reboots
-- **Containers for lightweight services** saved ~1.5 GB, enough to fit MISP
-- **Snapshots taken after cloud-init finished**, never mid-install
-
-## Verification
-```
-splunk01: done | agent=active | ipv6_off=1   (×6 VMs)
-All 8 reachable · key-only SSH · 23.5 / 24 GB
-```
+## Decisions
+- **Scripted build.** One table drives one loop, so I can rebuild the whole SOC from this document.
+- **Fixed two gaps once, in a shared first-boot config:** the QEMU guest agent was missing, and I disabled IPv6 (my guess at the time for the block count in 1.6).
+- **Full clones, fixed RAM, autostart.** The VMs don't depend on the template, the RAM budget means something, and the SOC comes back after a host reboot.
+- **Containers for the light services.** That saved about 1.5 GB, which is what made room for MISP.
+- **Snapshots only after cloud-init finished,** so every rollback point is a clean system.
 
 **Skills:** provisioning automation · cloud-init · capacity planning · Linux hardening
 

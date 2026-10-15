@@ -3,7 +3,7 @@
 A record of how this SOC was built. Each step has two documents:
 
 - **Summary** (this folder): what was done, the key decisions, and the result. A 2-minute read.
-- **Deep dive** (`deep-dives/`): every command, flag, troubleshooting step and lesson learned.
+- **Deep dive** (`deep-dives/`): the full configs, commands and issues behind each step.
 
 ## Phase 1: Foundation ✅
 
@@ -23,3 +23,4 @@ A record of how this SOC was built. Each step has two documents:
 | --- | --- | --- | --- |
 | 2.1 | [Splunk Enterprise](08-splunk-installation.md) | SIEM as a hardened systemd service, index design | [details](deep-dives/08-splunk-installation.md) |
 | 2.2 | [Pi-hole DNS + logging](09-pihole-dns.md) | Network-wide DNS sinkhole; found UDR DNS interception and an IoT segmentation gap; DNS logs in Splunk | [details](deep-dives/09-pihole-dns.md) |
+| 2.3 | [Infrastructure logs](10-infrastructure-logs.md) | Firewall, switch and hypervisor → Splunk; fixed host-spoofing and timezone issues; closed the block-count investigation with evidence | [details](deep-dives/10-infrastructure-logs.md) |
