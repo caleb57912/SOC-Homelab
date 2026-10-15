@@ -22,3 +22,4 @@ A record of how this SOC was built. Each step has two documents:
 | Step | Summary | Highlights | Deep dive |
 | --- | --- | --- | --- |
 | 2.1 | [Splunk Enterprise](08-splunk-installation.md) | SIEM as a hardened systemd service, index design | [details](deep-dives/08-splunk-installation.md) |
+| 2.2 | [Pi-hole DNS + logging](09-pihole-dns.md) | Network-wide DNS sinkhole; found UDR DNS interception and an IoT segmentation gap; DNS logs in Splunk | [details](deep-dives/09-pihole-dns.md) |
