@@ -141,7 +141,8 @@ Folders other than `build-log/` fill in as later phases are built.
 | [`cases/`](cases) | One folder per worked case: ticket, report, evidence |
 | [`reports/`](reports) | Weekly SOC reports and monthly threat briefs |
 | [`threat-intel/`](threat-intel) | MISP feeds, IoCs, and intel notes |
-| [`automation/`](automation) | Shuffle playbooks and scripts |
+| [`automation/`](automation) | Shuffle playbooks |
+| [`scripts/`](scripts) | Deployment, maintenance and troubleshooting scripts I run |
 | [`ir/velociraptor/`](ir/velociraptor) | Velociraptor artifacts and collections |
 | [`screenshots/`](screenshots) | Evidence supporting the documentation |
 
