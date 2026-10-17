@@ -4,7 +4,9 @@ param(
     [string]$ConfigUrl = "https://github.com/olafhartong/sysmon-modular/releases/latest/download/sysmonconfig.xml",
     [string]$ForwarderMsi,
     [string]$Indexer = "10.30.0.10:9997",
-    [string]$DeploymentServer = "10.30.0.10:8089"
+    [string]$DeploymentServer = "10.30.0.10:8089",
+    [string]$WazuhManager,
+    [string]$WazuhVersion = "4.14.9-1"
 )
 
 $ErrorActionPreference = "Stop"
@@ -71,8 +73,32 @@ if ($ForwarderMsi) {
     Start-Sleep -Seconds 20
 }
 
+if ($WazuhManager) {
+    if (-not (Get-Service -Name WazuhSvc -ErrorAction SilentlyContinue)) {
+        Write-Host "[Wazuh] Installing agent $WazuhVersion"
+        $wazuhMsi = Join-Path $env:TEMP "wazuh-agent-$WazuhVersion.msi"
+        Invoke-WebRequest -Uri "https://packages.wazuh.com/4.x/windows/wazuh-agent-$WazuhVersion.msi" -OutFile $wazuhMsi -UseBasicParsing
+        $secure = Read-Host "Wazuh enrollment password" -AsSecureString
+        $plain = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure))
+        $wArgs = @(
+            "/i", "`"$wazuhMsi`"", "/q",
+            "WAZUH_MANAGER=$WazuhManager",
+            "WAZUH_REGISTRATION_PASSWORD=$plain",
+            "WAZUH_AGENT_NAME=$env:COMPUTERNAME"
+        )
+        $p = Start-Process -FilePath msiexec.exe -ArgumentList $wArgs -Wait -PassThru
+        $plain = $null
+        Remove-Item $wazuhMsi -Force
+        if ($p.ExitCode -ne 0) { throw "Wazuh agent install failed, msiexec exit code $($p.ExitCode)" }
+        Start-Service -Name WazuhSvc
+        Start-Sleep -Seconds 15
+    } else {
+        Write-Host "[Wazuh] Agent already installed"
+    }
+}
+
 Write-Host "[Verify]"
-Get-Service Sysmon64, SplunkForwarder -ErrorAction SilentlyContinue | Select-Object Name, Status, StartType | Format-Table -AutoSize
+Get-Service Sysmon64, SplunkForwarder, WazuhSvc -ErrorAction SilentlyContinue | Select-Object Name, Status, StartType | Format-Table -AutoSize
 Get-WinEvent -LogName "Microsoft-Windows-Sysmon/Operational" -MaxEvents 5 | Select-Object TimeCreated, Id | Format-Table -AutoSize
 auditpol /get /subcategory:"Logon"
 if ($ForwarderMsi) {

@@ -25,3 +25,4 @@ A record of how this SOC was built. Each step has two documents:
 | 2.2 | [Pi-hole DNS + logging](09-pihole-dns.md) | Network-wide DNS sinkhole; found UDR DNS interception and an IoT segmentation gap; DNS logs in Splunk | [details](deep-dives/09-pihole-dns.md) |
 | 2.3 | [Infrastructure logs](10-infrastructure-logs.md) | Firewall, switch and hypervisor → Splunk; fixed host-spoofing and timezone issues; closed the block-count investigation with evidence | [details](deep-dives/10-infrastructure-logs.md) |
 | 2.4 | [Endpoint telemetry](11-endpoint-telemetry.md) | Sysmon + UF on my PC via a deployment server, one-script onboarding, least-privilege fix for Sysmon access, 76% noise cut | [details](deep-dives/11-endpoint-telemetry.md) |
+| 2.5 | [Wazuh](12-wazuh.md) | Manager-only Wazuh feeding Splunk through my own add-on; CIS baselines for both systems (49% / 26%); password-protected enrollment | [details](deep-dives/12-wazuh.md) |
