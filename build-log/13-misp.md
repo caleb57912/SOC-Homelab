@@ -1,6 +1,6 @@
 # 2.6 · MISP: Threat Intelligence Platform
 
-**Result:** MISP 2.5.50 runs natively on `misp01` within its 3 GB RAM budget. Five public feeds (CIRCL OSINT, Botvrij.eu, abuse.ch URLhaus, ThreatFox and Feodo) refresh every 6 hours, giving me about 2,100 events and 650,000+ indicators. Splunk queries MISP live through the misp42splunk add-on, using a read-only API key that only works from splunk01, and keeps 132,571 detection-ready domains and hostnames in a local lookup (`misp_dns_iocs.csv`). Pi-hole logs now carry CIM DNS fields, so the lookup can be matched against every DNS query.
+**Result:** MISP 2.5.50 runs natively on `misp01` within its 3 GB RAM budget. Five public feeds (CIRCL OSINT, Botvrij.eu, abuse.ch URLhaus, ThreatFox and Feodo) refresh every 6 hours, giving me about 2,100 events and 650,000+ indicators. Splunk queries MISP live through the misp42splunk add-on, using a read-only API key that only works from splunk01, and keeps 132,571 detection-ready domains and hostnames in a local lookup (`misp_dns_iocs.csv`) that rebuilds every 6 hours. Pi-hole logs now carry CIM DNS fields, so the lookup can be matched against every DNS query.
 
 ```mermaid
 flowchart LR
@@ -17,7 +17,7 @@ flowchart LR
 - **Five feeds stored as events**, with caching off so feed data lives on disk rather than in RAM
 - **Least-privilege API access for Splunk:** an `API Read Only` role, a dedicated service account, and an auth key that is read-only and only accepted from splunk01
 - **misp42splunk 6.1.0 on splunk01**, so Splunk searches can pull indicators from MISP with `| mispgetioc`
-- **A Splunk lookup of MISP's DNS indicators** (`domain` and `hostname`, `to_ids` only, warning lists applied), so matching runs locally instead of calling a slow API for every event
+- **A Splunk lookup of MISP's DNS indicators** (`domain` and `hostname`, `to_ids` only, warning lists applied), rebuilt by a scheduled report 28 minutes after each feed fetch, so matching runs locally instead of calling a slow API for every event
 - **DNS fields for Pi-hole logs** (`query`, `record_type`, `src`) in my `TA-soc-homelab` add-on, exported to every Splunk app
 - **Auto-publish and `tlp:clear` tags on the abuse.ch feeds**, so their events reach Splunk and carry their sharing level
 

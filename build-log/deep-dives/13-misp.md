@@ -475,9 +475,18 @@ export = system
 
 After a restart, `index=dns sourcetype=pihole:dnsmasq "query["` returns `src`, `record_type` and `query` on every event without `rex`. Both files are in `siem/splunk/apps/TA-soc-homelab/`.
 
-## Next in this step
+### Scheduled rebuild
 
-- Schedule the lookup rebuild every 6 hours, after the MISP feed fetch
+The lookup is a snapshot, so I saved the build search as a report (**MISP - Build DNS IOC lookup**, Search & Reporting app) and scheduled it:
+
+| Setting | Value | Reason |
+| --- | --- | --- |
+| Cron | `45 */6 * * *` | 28 minutes after the MISP feed fetch (`17 */6`), so it picks up fresh data |
+| Time range | Last 60 minutes | `mispgetioc` ignores it, but a scheduled search needs a historical range |
+| Trigger actions | None | `outputlookup` does the work |
+
+Both servers run in UTC, so the two schedules stay aligned. The first run was scheduled for 12:45 UTC on 18 Oct. Scheduler results are in `index=_internal sourcetype=scheduler savedsearch_name="MISP - Build DNS IOC lookup"`. The equivalent `savedsearches.conf` stanza is in `siem/splunk/saved-searches/`.
+
 
 ## Phase 4 (moved there)
 
