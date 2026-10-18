@@ -28,3 +28,9 @@ A record of how this SOC was built. Each step has two documents:
 | 2.5 | [Wazuh](12-wazuh.md) | Manager-only Wazuh feeding Splunk through my own add-on; CIS baselines for both systems (49% / 26%); password-protected enrollment | [details](deep-dives/12-wazuh.md) |
 | 2.6 | [MISP](13-misp.md) | Native MISP in 3 GB; five feeds (650k+ IOCs) refreshing every 6h; fixed a Redis/PHP session outage; Splunk queries MISP via misp42splunk with a read-only, IP-locked key; 132k-domain IOC lookup; CIM DNS fields for Pi-hole | [details](deep-dives/13-misp.md) |
 | 2.7 | [Zeek + Suricata](14-zeek-suricata.md) | SPAN of the uplink and admin port to a no-IP capture bridge; Zeek + Suricata (53k ET Open rules) in 3 GB; traced 742 noise alerts to switch STP/CDP/keepalive frames and filtered them; found CDP leaking the IOS version and ports left enabled since 1.4; alert-only Suricata filter and a forwarder shipping both to Splunk | [details](deep-dives/14-zeek-suricata.md) |
+
+## Phase 3: Response and baseline 🚧
+
+| Step | Summary | Highlights | Deep dive |
+| --- | --- | --- | --- |
+| 3.1 | [TheHive](15-thehive.md) 🚧 | Sized three JVMs into a 6 GB VM from the vendor's current numbers; Cassandra 4.1 with authentication, localhost-only binding and the default superuser removed; fixed cqlsh on Python 3.12 | [details](deep-dives/15-thehive.md) |
