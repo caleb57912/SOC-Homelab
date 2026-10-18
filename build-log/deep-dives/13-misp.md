@@ -276,6 +276,47 @@ sudo chmod 644 /etc/cron.d/misp-feeds
 | `644` | Cron silently ignores `/etc/cron.d` files that are group- or world-writable |
 | Output to `/dev/null` | There's no mail server for cron to send output to. Results still appear under Administration → Jobs. |
 
+### After the first import finished
+
+I counted again once all the fetch jobs had completed:
+
+```bash
+sudo mysql misp -e "SELECT published, COUNT(*) AS events, SUM(attribute_count) AS attrs FROM events GROUP BY published;"
+```
+
+```
+| 0 |    3 |  41160 |
+| 1 | 2112 | 615056 |
+```
+
+CIRCL's full history is much larger than the first count suggested: 1,056 CIRCL events plus 286 from Krawczyk Industries Limited (about 294,000 attributes), another original author redistributed through the OSINT feeds. About 650,000 attributes is heavy for a 3 GB VM, and it shows in API response times.
+
+### Publishing the abuse.ch events
+
+The three unpublished events were the abuse.ch ones (IDs 1, 2 and 5). Freetext feeds create their events unpublished, and Splunk only reads published events, so 41,000 of the freshest indicators were invisible to it.
+
+| Feed setting | Value | Reason |
+| --- | --- | --- |
+| Auto Publish | On | Each fetch publishes the event |
+| Creator organisation | SOC-Homelab | The form defaulted to another org from the imported data |
+| Default Tag | `tlp:clear` | abuse.ch data is public; the tag travels with each indicator into Splunk (`misp_tag`) |
+| Disable correlation | On (unchanged) | Correlating tens of thousands of short-lived URLs costs CPU and RAM for little value |
+| Delta Merge | On (unchanged) | Indicators that drop off the feed are removed |
+
+I enabled the `tlp` taxonomy first (Event Actions → List Taxonomies), then published the three existing events once with **Publish (no email)**. There's no mail server, and a normal publish would queue notification emails.
+
+I applied the tag only to the abuse.ch feeds. CIRCL and Botvrij events carry their authors' own tags, and a blanket default tag could mislabel events shared under a stricter TLP.
+
+### Duplicate URLhaus feed
+
+The feed list showed six enabled feeds. URLhaus was on twice: the CSV feed I configured (ID 41, one event updated in place) and a MISP-format feed (ID 65, a new event every day). I disabled 65. No `abuse.ch` creator org appeared in the event counts, so it hadn't imported anything yet, and only the CSV event exists:
+
+```bash
+sudo mysql misp -e "SELECT COUNT(*) AS urlhaus_events FROM events WHERE info LIKE '%urlhaus%';"
+```
+
+I kept the CSV version because it stays current with delta merge and doesn't grow every day.
+
 ## API access for Splunk
 
 Splunk only needs to read indicators, so it got its own identity with the minimum access:
@@ -318,10 +359,67 @@ unset MK
 
 The key works, can't write, and can't be used from anywhere except splunk01. `-k` skips certificate checks because MISP's certificate is self-signed; a trusted certificate is on the backlog.
 
+## misp42splunk on splunk01
+
+misp42splunk adds search commands that query MISP's API from Splunk. I took a Proxmox snapshot of splunk01 (`pre-misp42splunk`) first, since the add-on runs its own Python inside Splunk.
+
+I installed version 6.1.0 from Splunkbase through **Apps → Manage Apps → Install app from file**, then restarted Splunk through systemd:
+
+```bash
+sudo systemctl restart Splunkd
+systemctl is-active Splunkd
+```
+
+Splunk runs as a systemd service under the `splunk` user. Restarting it with `sudo /opt/splunk/bin/splunk restart` could start it as root, outside systemd, and leave root-owned files behind.
+
+### Instance configuration
+
+| Field | Value |
+| --- | --- |
+| Name | `misp01` |
+| URL | `https://10.30.0.30` |
+| Auth key | The `splunk@soc.lan` read-only key |
+| Check MISP certificate | Off (self-signed certificate) |
+
+misp42splunk stores the key in Splunk's encrypted credential store, and its `local/` folder stays out of this repo.
+
+### Troubleshooting the first searches
+
+```
+| mispgetioc misp_instance=misp01 last=7d limit=20
+```
+
+The first run failed with `MISP instance not found: misp01` because I hadn't saved the instance yet. After adding it, the same search and an `eventid=5` search returned nothing.
+
+```mermaid
+flowchart LR
+    SP[Splunk search] --> AO[misp42splunk]
+    AO -->|restSearch| M[MISP API]
+    C[curl from splunk01<br/>same key] -->|restSearch| M
+    M -->|attributes| C
+```
+
+I split the path in two and tested the MISP side on its own with the same key from splunk01:
+
+```bash
+read -rs MK
+curl -sk -H "Authorization: $MK" -H "Accept: application/json" -H "Content-Type: application/json" -X POST https://10.30.0.30/attributes/restSearch -d '{"eventid":643,"limit":3}' | head -c 800; echo
+unset MK
+```
+
+The response took a long time but returned attributes from event 643, for example `007vlad.ddns.net` (`hostname`, `to_ids: true`). The key, role, IP restriction and event visibility were all fine. The response also showed `publish_timestamp` 1792310705 (17 Oct 2026): MISP stamps feed events with the date they were imported, so publish date wasn't the reason `last=7d` came back empty.
+
+Rerunning the search in Splunk then returned 40 indicators:
+
+```
+| mispgetioc misp_instance=misp01 eventid=643 limit=20
+```
+
+The fields come back prefixed `misp_`, with the value in a field named after its type (`misp_hostname` here). `_time` is each attribute's own timestamp (2015 for this event), so the time picker doesn't filter results; the command's options do. The earlier empty results lined up with MISP being slow while it was still importing, and event 5 being one of the unpublished abuse.ch events.
+
 ## Next in this step
 
-- Install misp42splunk on splunk01 and query MISP from Splunk
-- Match IOCs against `index=dns`, `index=network` and `index=os`
+- Match MISP indicators against `index=dns`, `index=network` and `index=os`
 - Add the AlienVault OTX feed (needs an API key, stored under the encryption key)
 
 ## Backlog
@@ -331,3 +429,5 @@ The key works, can't write, and can't be used from anywhere except splunk01. `-k
 - Ship MISP's own logs (`app/tmp/logs`, Apache) to Splunk
 - Suricata rules and a Pi-hole blocklist generated from MISP
 - Feed tuning: expiry or decay for short-lived URLhaus indicators
+- RAM rebalance, then misp01 to 4 GB and a larger buffer pool, if API responses stay slow
+- Splunk-side IOC lookup refreshed on a schedule, so detections don't wait on live API calls
