@@ -67,3 +67,11 @@ pve-manager/8.4.21/2606ac850d46da29 (running kernel: 6.8.12-43-pve)
 
 - Patch on a regular schedule and log each run here
 - Plan the Proxmox 8 → 9 upgrade as a separate change
+
+## Evidence
+
+Screenshots are redacted: public IPs, MAC addresses, external domains and household devices are blacked out.
+
+**pve on kernel 6.8.12-9 after patching, with the network config I backed up before touching the bridge.**
+
+![pve on kernel 6.8.12-9 after patching, with the network config I backed up before touching the bridge.](../../screenshots/build-log/01-proxmox-host-patching/01-pve-kernel.png)

@@ -151,3 +151,23 @@ The forwarder uses Splunk's default certificates without server verification. Th
 - TLS between forwarder and indexer
 - Non-root admin user in the container
 - Feed MISP indicators into the blocklist (step 2.6)
+
+## Evidence
+
+Screenshots are redacted: public IPs, MAC addresses, external domains and household devices are blacked out.
+
+**Pi-hole answering on 10.30.0.53 and sinkholing a blocklisted domain to 0.0.0.0.**
+
+![Pi-hole answering on 10.30.0.53 and sinkholing a blocklisted domain to 0.0.0.0.](../../screenshots/build-log/09-pihole-dns/01-pihole-dashboard.png)
+
+**Watching port 53 on dns01 while testing lookups.**
+
+![Watching port 53 on dns01 while testing lookups.](../../screenshots/build-log/09-pihole-dns/02-tcpdump-dns.png)
+
+**Pi-hole query logs searchable in index=dns.**
+
+![Pi-hole query logs searchable in index=dns.](../../screenshots/build-log/09-pihole-dns/03-dns-events-splunk.png)
+
+**dns01 running comfortably in 512 MB.**
+
+![dns01 running comfortably in 512 MB.](../../screenshots/build-log/09-pihole-dns/04-dns01-memory.png)

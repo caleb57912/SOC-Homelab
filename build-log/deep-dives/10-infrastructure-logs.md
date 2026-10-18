@@ -238,3 +238,35 @@ All three report with the correct host and time, and Proxmox failed logins are s
 - TLS for syslog
 - VTY `access-class` on the switch
 - Rebuild the VPN on the UDR
+
+## Evidence
+
+Screenshots are redacted: public IPs, MAC addresses, external domains and household devices are blacked out.
+
+**Catalyst logging to 10.30.0.10, config archive logging and NTP sync.**
+
+![Catalyst logging to 10.30.0.10, config archive logging and NTP sync.](../../screenshots/build-log/10-infrastructure-logs/01-switch-logging.png)
+
+**The rsyslog parse error caused by a duplicated template line.**
+
+![The rsyslog parse error caused by a duplicated template line.](../../screenshots/build-log/10-infrastructure-logs/02-rsyslog-template-error.png)
+
+**pve logs arriving with RFC 5424 timestamps and the correct offset.**
+
+![pve logs arriving with RFC 5424 timestamps and the correct offset.](../../screenshots/build-log/10-infrastructure-logs/03-timezone-fix.png)
+
+**Per-host directories on the collector and a UDR firewall block event.**
+
+![Per-host directories on the collector and a UDR firewall block event.](../../screenshots/build-log/10-infrastructure-logs/04-remote-log-dirs.png)
+
+**Failed Proxmox logins with source IP and user.**
+
+![Failed Proxmox logins with source IP and user.](../../screenshots/build-log/10-infrastructure-logs/05-failed-logins.png)
+
+**UDR activity logging sent to the SIEM server on 10.30.0.10:514.**
+
+![UDR activity logging sent to the SIEM server on 10.30.0.10:514.](../../screenshots/build-log/10-infrastructure-logs/06-udr-siem-settings.png)
+
+**The SOC block rule hits: UDR discovery broadcasts on UDP 10001.**
+
+![The SOC block rule hits: UDR discovery broadcasts on UDP 10001.](../../screenshots/build-log/10-infrastructure-logs/07-udr-block-stats.png)

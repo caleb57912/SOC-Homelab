@@ -84,3 +84,19 @@ In step 2.2, I found that my IoT network also sits in the Internal zone, which m
 ## Backlog
 
 - Narrow Internal → SOC to specific ports (Splunk, Wazuh, syslog, SSH)
+
+## Evidence
+
+Screenshots are redacted: public IPs, MAC addresses, external domains and household devices are blacked out.
+
+**The zone matrix: SOC can reach External and Gateway and nothing else.**
+
+![The zone matrix: SOC can reach External and Gateway and nothing else.](../../screenshots/build-log/03-udr-soc-segment/01-zone-matrix.png)
+
+**SOC to Gateway blocked by default.**
+
+![SOC to Gateway blocked by default.](../../screenshots/build-log/03-udr-soc-segment/02-soc-block-rule.png)
+
+**The DNS-NTP exception from SOC to Gateway.**
+
+![The DNS-NTP exception from SOC to Gateway.](../../screenshots/build-log/03-udr-soc-segment/03-dns-ntp-allow.png)

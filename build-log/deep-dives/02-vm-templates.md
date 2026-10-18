@@ -71,3 +71,15 @@ pveam list isostore
 ```
 
 `template: 1`, the boot disk is `base-9000-disk-0` on `local-lvm`, `ide2` is the cloud-init drive, and the Debian template is listed in `isostore`.
+
+## Evidence
+
+Screenshots are redacted: public IPs, MAC addresses, external domains and household devices are blacked out.
+
+**The isostore directory storage holding ISOs and container templates.**
+
+![The isostore directory storage holding ISOs and container templates.](../../screenshots/build-log/02-vm-templates/01-isostore.png)
+
+**The Debian 12 LXC template and the Ubuntu 24.04 cloud image in place.**
+
+![The Debian 12 LXC template and the Ubuntu 24.04 cloud image in place.](../../screenshots/build-log/02-vm-templates/02-lxc-template-download.png)

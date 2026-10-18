@@ -67,3 +67,11 @@ ip -br link show | grep eno
 ```
 
 `vmbr0` has the two new lines, `eno1` carries VLAN 1 as PVID plus 2–4094, the gateway ping shows 0% loss, and the Proxmox UI, VPN and existing VMs were all still reachable. `eno2`–`eno4` are confirmed unused, so `eno2` will be the sensor's dedicated capture NIC in step 2.7.
+
+## Evidence
+
+Screenshots are redacted: public IPs, MAC addresses, external domains and household devices are blacked out.
+
+**vmbr0 VLAN-aware with VIDs 2-4094 and the gateway still reachable.**
+
+![vmbr0 VLAN-aware with VIDs 2-4094 and the gateway still reachable.](../../screenshots/build-log/05-proxmox-vlan-aware-bridge/01-vlan-ping.png)

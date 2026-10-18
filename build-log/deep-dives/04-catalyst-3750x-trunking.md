@@ -158,3 +158,31 @@ Both trunks are up and forwarding only VLANs 1 and 30, Gi1/0/3 is shut, routing 
 - Remove the legacy VLANs
 - Back up the config to the repo with secrets scrubbed
 - SPAN session to the sensor NIC (step 2.7)
+
+## Evidence
+
+Screenshots are redacted: public IPs, MAC addresses, external domains and household devices are blacked out.
+
+**Gi1/0/3 in STP Backup/BLK, the loop I found in the audit.**
+
+![Gi1/0/3 in STP Backup/BLK, the loop I found in the audit.](../../screenshots/build-log/04-catalyst-3750x-trunking/01-stp-backup-port.png)
+
+**Gi1/0/1 and Gi1/0/5 trunking VLANs 1 and 30, Gi1/0/3 disabled.**
+
+![Gi1/0/1 and Gi1/0/5 trunking VLANs 1 and 30, Gi1/0/3 disabled.](../../screenshots/build-log/04-catalyst-3750x-trunking/02-trunk-verify.png)
+
+**The switch only offers SHA-1 key exchange, so modern SSH refuses it.**
+
+![The switch only offers SHA-1 key exchange, so modern SSH refuses it.](../../screenshots/build-log/04-catalyst-3750x-trunking/03-ssh-legacy-kex.png)
+
+**Port review after re-cabling: UDR Port 1 was set to native SOC with Allow All tagged.**
+
+![Port review after re-cabling: UDR Port 1 was set to native SOC with Allow All tagged.](../../screenshots/build-log/04-catalyst-3750x-trunking/port-review-01-udr-ports.png)
+
+**UDR Port 1 corrected to native Default with only SOC (30) tagged.**
+
+![UDR Port 1 corrected to native Default with only SOC (30) tagged.](../../screenshots/build-log/04-catalyst-3750x-trunking/port-review-02-udr-port1-profile.png)
+
+**All four forwarding hosts reporting to _internal after the change.**
+
+![All four forwarding hosts reporting to _internal after the change.](../../screenshots/build-log/04-catalyst-3750x-trunking/port-review-03-internal-check.png)

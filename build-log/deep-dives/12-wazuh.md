@@ -195,3 +195,27 @@ New local accounts are a classic persistence technique, so this rule matters. It
 - Review the CIS failures and decide fix vs. accept (GRC-Homelab)
 - Upgrade procedure: manager first, then agents
 - TLS between the forwarder and splunk01
+
+## Evidence
+
+Screenshots are redacted: public IPs, MAC addresses, external domains and household devices are blacked out.
+
+**Manager-only config: indexer disabled, JSON output on, enrollment password required, ports listening.**
+
+![Manager-only config: indexer disabled, JSON output on, enrollment password required, ports listening.](../../screenshots/build-log/12-wazuh/01-ossec-conf.png)
+
+**Wazuh alerts in index=wazuh, led by CIS benchmark checks.**
+
+![Wazuh alerts in index=wazuh, led by CIS benchmark checks.](../../screenshots/build-log/12-wazuh/02-wazuh-alerts.png)
+
+**SCA summary: wazuh01 scores 49% on CIS Ubuntu 24.04.**
+
+![SCA summary: wazuh01 scores 49% on CIS Ubuntu 24.04.](../../screenshots/build-log/12-wazuh/03-sca-scores.png)
+
+**The workstation agent active on the manager.**
+
+![The workstation agent active on the manager.](../../screenshots/build-log/12-wazuh/04-agent-control.png)
+
+**The onboarding script installing the Wazuh agent with a prompted enrollment password.**
+
+![The onboarding script installing the Wazuh agent with a prompted enrollment password.](../../screenshots/build-log/12-wazuh/05-agent-install.png)

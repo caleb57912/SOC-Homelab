@@ -94,3 +94,11 @@ I destroyed the VM afterwards (`qm stop 999 && qm destroy 999`).
 ## Gate
 
 The SOC VLAN works end to end. The SOC reaches the internet and the gateway's DNS, can't reach the home network or router management, and admin access from home works. Nothing I already had running was affected.
+
+## Evidence
+
+Screenshots are redacted: public IPs, MAC addresses, external domains and household devices are blacked out.
+
+**The smoke-test VM cloned from template 9000 booting on VLAN 30.**
+
+![The smoke-test VM cloned from template 9000 booting on VLAN 30.](../../screenshots/build-log/06-smoke-test-vlan30/01-cloud-init-vm.png)

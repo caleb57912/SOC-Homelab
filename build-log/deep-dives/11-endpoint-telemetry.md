@@ -374,3 +374,43 @@ index=os earliest=-24h
 - Custom add-on (`TA-soc-homelab`) mapping Pi-hole, UDR and Catalyst data into the CIM
 - TLS between the forwarder and splunk01 (`sslVerifyServerCert` is currently false)
 - Turn on detections from Security Essentials after a baseline week
+
+## Evidence
+
+Screenshots are redacted: public IPs, MAC addresses, external domains and household devices are blacked out.
+
+**First run of Install-SocEndpoint.ps1: Sysmon, audit policy, verification.**
+
+![First run of Install-SocEndpoint.ps1: Sysmon, audit policy, verification.](../../screenshots/build-log/11-endpoint-telemetry/01-install-script.png)
+
+**SplunkForwarder and Sysmon64 running and the forwarder connected to 10.30.0.10:9997.**
+
+![SplunkForwarder and Sysmon64 running and the forwarder connected to 10.30.0.10:9997.](../../screenshots/build-log/11-endpoint-telemetry/02-services-verified.png)
+
+**The workstation checked in to the deployment server.**
+
+![The workstation checked in to the deployment server.](../../screenshots/build-log/11-endpoint-telemetry/03-agent-management.png)
+
+**errorCode=5: the forwarder could not read the Sysmon channel until I granted Event Log Readers.**
+
+![errorCode=5: the forwarder could not read the Sysmon channel until I granted Event Log Readers.](../../screenshots/build-log/11-endpoint-telemetry/04-errorcode5.png)
+
+**Windows event logs landing in index=os.**
+
+![Windows event logs landing in index=os.](../../screenshots/build-log/11-endpoint-telemetry/05-os-sources.png)
+
+**Sysmon network connections by process and destination.**
+
+![Sysmon network connections by process and destination.](../../screenshots/build-log/11-endpoint-telemetry/06-sysmon-network.png)
+
+**Security event codes before filtering 5379.**
+
+![Security event codes before filtering 5379.](../../screenshots/build-log/11-endpoint-telemetry/07-security-eventcodes.png)
+
+**CIM tags working: tag=network tag=communicate returns Sysmon events.**
+
+![CIM tags working: tag=network tag=communicate returns Sysmon events.](../../screenshots/build-log/11-endpoint-telemetry/08-cim-tags.png)
+
+**Security Essentials data introspection completed.**
+
+![Security Essentials data introspection completed.](../../screenshots/build-log/11-endpoint-telemetry/09-sse-introspection.png)
