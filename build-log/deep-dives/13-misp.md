@@ -417,10 +417,73 @@ Rerunning the search in Splunk then returned 40 indicators:
 
 The fields come back prefixed `misp_`, with the value in a field named after its type (`misp_hostname` here). `_time` is each attribute's own timestamp (2015 for this event), so the time picker doesn't filter results; the command's options do. The earlier empty results lined up with MISP being slow while it was still importing, and event 5 being one of the unpublished abuse.ch events.
 
+## Indicators as a Splunk lookup
+
+Live `mispgetioc` calls are too slow to run against every log event, so I export MISP's DNS indicators into a lookup that Splunk matches locally.
+
+```mermaid
+flowchart LR
+    M[MISP] -->|mispgetioc<br/>domain + hostname<br/>to_ids only| L[(misp_dns_iocs.csv<br/>on splunk01)]
+    D[index=dns<br/>Pi-hole queries] --> X{lookup on ioc}
+    L --> X
+```
+
+```
+| mispgetioc misp_instance=misp01 last=3650d type="domain,hostname" to_ids=true limit=5000
+| eval ioc=lower(coalesce(misp_domain, misp_hostname))
+| where isnotnull(ioc)
+| stats values(misp_event_id) as misp_event_id values(misp_event_info) as misp_event_info values(misp_tag) as misp_tag first(misp_type) as misp_type by ioc
+| outputlookup misp_dns_iocs.csv
+```
+
+| Choice | Reason |
+| --- | --- |
+| `to_ids=true` | Only indicators their authors marked as fit for detection; the rest is report context |
+| Warning lists on (default) | Drops well-known benign values such as major cloud and CDN domains |
+| `last=3650d` | `mispgetioc` requires a time argument. `last` filters on publish time, and feed events keep their import date, so a narrow window would slowly drop unchanged CIRCL events |
+| `limit=5000` | Page size per API call; the default of 1,000 means more round trips to a slow MISP |
+| `lower()` and `stats ... by ioc` | DNS names are case-insensitive, and the same domain appears in several reports; one row per domain keeps every event ID and tag |
+
+The first run failed twice. The time picker was on a real-time window (`This command is not supported in a real-time search`), and then the add-on returned `Missing "date", "eventid", "json_request", "last", "publish_timestamp" or "timestamp" argument`. With a historical range and `last=3650d` it returned 135,676 attributes, which collapsed to **132,571 unique domains and hostnames**.
+
+## DNS fields for Pi-hole
+
+Pi-hole events had no DNS fields in Splunk, only the raw line:
+
+```
+dnsmasq[...]: query[A] example.com from 192.168.1.11
+```
+
+I tested a pattern with `rex`, then made it permanent in `TA-soc-homelab` using CIM Network Resolution names:
+
+`/opt/splunk/etc/apps/TA-soc-homelab/default/props.conf`:
+
+```
+[pihole:dnsmasq]
+EXTRACT-dns_query = query\[(?<record_type>[^\]]+)\]\s+(?<query>\S+)\s+from\s+(?<src>\S+)
+```
+
+`btool` confirmed Splunk loaded it, but the fields still didn't appear in Search & Reporting. Search-time extractions only apply inside the app that defines them unless the app exports them, so I added:
+
+`/opt/splunk/etc/apps/TA-soc-homelab/metadata/default.meta`:
+
+```
+[]
+access = read : [ * ], write : [ admin ]
+export = system
+```
+
+After a restart, `index=dns sourcetype=pihole:dnsmasq "query["` returns `src`, `record_type` and `query` on every event without `rex`. Both files are in `siem/splunk/apps/TA-soc-homelab/`.
+
 ## Next in this step
 
-- Match MISP indicators against `index=dns`, `index=network` and `index=os`
-- Add the AlienVault OTX feed (needs an API key, stored under the encryption key)
+- Schedule the lookup rebuild every 6 hours, after the MISP feed fetch
+
+## Phase 4 (moved there)
+
+- Correlation searches matching `misp_dns_iocs.csv` against `index=dns`, plus IP and hash indicators against network and endpoint data
+- A reviewed allowlist for dual-use indicators, with a reason per entry
+- AlienVault OTX feed
 
 ## Backlog
 
