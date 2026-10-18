@@ -17,7 +17,7 @@ A record of how this SOC was built. Each step has two documents:
 | 1.6 | [End-to-end smoke test](06-smoke-test-vlan30.md) | Diagnosed a trunk mismatch with tcpdump; all firewall tests passed | [details](deep-dives/06-smoke-test-vlan30.md) |
 | 1.7 | [SOC systems build](07-soc-systems-build.md) | 8 systems (6 VMs + 2 LXC), scripted, within a 24 GB RAM budget | [details](deep-dives/07-soc-systems-build.md) |
 
-## Phase 2: Telemetry and intel 🔄
+## Phase 2: Telemetry and intel ✅
 
 | Step | Summary | Highlights | Deep dive |
 | --- | --- | --- | --- |
@@ -27,4 +27,4 @@ A record of how this SOC was built. Each step has two documents:
 | 2.4 | [Endpoint telemetry](11-endpoint-telemetry.md) | Sysmon + UF on my PC via a deployment server, one-script onboarding, least-privilege fix for Sysmon access, 76% noise cut | [details](deep-dives/11-endpoint-telemetry.md) |
 | 2.5 | [Wazuh](12-wazuh.md) | Manager-only Wazuh feeding Splunk through my own add-on; CIS baselines for both systems (49% / 26%); password-protected enrollment | [details](deep-dives/12-wazuh.md) |
 | 2.6 | [MISP](13-misp.md) | Native MISP in 3 GB; five feeds (650k+ IOCs) refreshing every 6h; fixed a Redis/PHP session outage; Splunk queries MISP via misp42splunk with a read-only, IP-locked key; 132k-domain IOC lookup; CIM DNS fields for Pi-hole | [details](deep-dives/13-misp.md) |
-| 2.7 | [Zeek + Suricata](14-zeek-suricata.md) | SPAN of the uplink and admin port to a no-IP capture bridge; Zeek + Suricata (53k ET Open rules) in 3 GB; traced 742 noise alerts to switch STP/CDP/keepalive frames and filtered them; found CDP leaking the IOS version and ports left enabled since 1.4; alert-only Suricata filter in Splunk to stay inside the license | [details](deep-dives/14-zeek-suricata.md) |
+| 2.7 | [Zeek + Suricata](14-zeek-suricata.md) | SPAN of the uplink and admin port to a no-IP capture bridge; Zeek + Suricata (53k ET Open rules) in 3 GB; traced 742 noise alerts to switch STP/CDP/keepalive frames and filtered them; found CDP leaking the IOS version and ports left enabled since 1.4; alert-only Suricata filter and a forwarder shipping both to Splunk | [details](deep-dives/14-zeek-suricata.md) |

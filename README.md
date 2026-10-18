@@ -4,7 +4,7 @@
 
 **A Security Operations Center segment defending my real home network, run like a production SOC.**
 
-<img src="https://img.shields.io/badge/Status-Phase_2:_Telemetry-F2A900?style=for-the-badge">
+<img src="https://img.shields.io/badge/Status-Phase_3:_Response-F2A900?style=for-the-badge">
 <img src="https://img.shields.io/badge/SIEM-Splunk-000000?style=for-the-badge&logo=splunk&logoColor=white">
 <img src="https://img.shields.io/badge/MITRE_ATT%26CK-Mapped-C8202F?style=for-the-badge">
 
@@ -16,7 +16,7 @@
 > Every step I've completed so far, in order, with the decisions, issues and fixes behind each one.
 >
 > - **Phase 1 Foundation ✅** network segmentation, switch hardening, 8 SOC systems
-> - **Phase 2 Telemetry 🔄** Splunk, Pi-hole DNS logging, firewall / switch / hypervisor logs, Sysmon endpoint telemetry, Wazuh, MISP threat intel, Zeek + Suricata on a SPAN feed
+> - **Phase 2 Telemetry ✅** Splunk, Pi-hole DNS logging, firewall / switch / hypervisor logs, Sysmon endpoint telemetry, Wazuh, MISP threat intel, Zeek + Suricata on a SPAN feed
 
 ## 🎯 Mission
 
@@ -108,7 +108,7 @@ Endpoint Sysmon + Splunk UF + Wazuh agents · UDR firewall, IDS/IPS, DHCP & WiFi
 - [x] Repository structure and documentation standards
 - [x] Design finalized
 - [x] Phase 1: Foundation
-- [ ] Phase 2: Telemetry + intel (in progress)
+- [x] Phase 2: Telemetry + intel
 - [ ] Phase 3: Response + baseline
 - [ ] Phase 4: Use-case loop
 - [ ] Phase 5: Reporting

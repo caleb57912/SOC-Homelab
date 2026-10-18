@@ -391,7 +391,7 @@ write memory
 show running-config interface GigabitEthernet1/0/4 | include cdp
 ```
 
-The sensor's BPF filter stays in place regardless, so the sensor doesn't depend on the switch config.
+I confirmed both ports show `no cdp enable`. The sensor's BPF filter stays in place regardless, so the sensor doesn't depend on the switch config.
 
 ### Daily rule updates
 
@@ -437,7 +437,7 @@ Splunk is on the 60-day trial (500 MB/day) until the developer license arrives. 
 | Zeek | `conn.log` 3.0 MB + `dns.log` 0.46 MB in 27 minutes | ~150–200 MB |
 | Suricata `eve.json`, all event types | 15 MB in 49 minutes | ~440 MB |
 
-eve.json broke down as `flow` 8,826, `tls` 6,836, `alert` 2,423, `dns` 2,281, `quic` 1,292, `mdns` 308, `stats` 248, `http` 12. Everything except alerts duplicates what Zeek logs in more detail. Forwarding all of it would have taken the total to about 700 MB/day, so Zeek is the metadata source and Suricata contributes only alerts and anomalies. Projected total: about 250 MB/day.
+eve.json broke down as `flow` 8,826, `tls` 6,836, `alert` 2,423, `dns` 2,281, `quic` 1,292, `mdns` 308, `stats` 248, `http` 12. Everything except alerts duplicates what Zeek logs in more detail. Forwarding all of it would have taken the total to about 700 MB/day, so Zeek is the metadata source and Suricata contributes only alerts. Projected total: about 250 MB/day.
 
 ### Indexes
 
@@ -486,12 +486,12 @@ DEST_KEY = queue
 FORMAT = nullQueue
 
 [suricata_eve_keep_alerts]
-REGEX = "event_type":"(alert|anomaly)"
+REGEX = "event_type":"alert"
 DEST_KEY = queue
 FORMAT = indexQueue
 ```
 
-Transforms run in the order listed: every eve event is first routed to the nullQueue, then alerts and anomalies are routed back to the index queue. Events left in the nullQueue are discarded before indexing and don't count against the license. The full eve.json stays on sensor01 for pivoting during an investigation.
+Transforms run in the order listed: every eve event is first routed to the nullQueue, then alerts are routed back to the index queue. Events left in the nullQueue are discarded before indexing and don't count against the license. The full eve.json stays on sensor01 for pivoting during an investigation.
 
 ```bash
 sudo -u splunk /opt/splunk/bin/splunk btool props list suricata:eve --debug | grep -E "TRANSFORMS|TIME_FORMAT"
@@ -533,7 +533,9 @@ sudo systemctl restart Splunkd && sleep 30 && systemctl is-active Splunkd && sud
 
 Line breaking, timestamps and `TRANSFORMS` are read at parse time, so splunkd needed a full restart. Search-time settings like `KV_MODE` would have applied without one.
 
-### Permissions plan for the forwarder
+### Forwarder on sensor01
+
+The log files' permissions decided how the forwarder gets access:
 
 | Path | Owner and mode | Access for `splunkfwd` |
 | --- | --- | --- |
@@ -542,6 +544,95 @@ Line breaking, timestamps and `TRANSFORMS` are read at parse time, so splunkd ne
 | `/var/log/suricata` | `suricata:suricata`, `drwxrwx---` | join the `suricata` group |
 
 This is the same least-privilege approach as wazuh01: no root forwarder, no loosened file modes.
+
+```bash
+wget -q -O /tmp/splunkforwarder.deb "https://download.splunk.com/products/universalforwarder/releases/10.6.0.5/linux/splunkforwarder-10.6.0.5-86587d4e3b27-linux-amd64.deb"
+sudo dpkg -i /tmp/splunkforwarder.deb
+sudo usermod -aG zeek,suricata splunkfwd
+sudo -u splunkfwd head -c 150 /opt/zeek/logs/current/conn.log
+sudo -u splunkfwd head -c 150 /var/log/suricata/eve.json
+```
+
+I added the groups and tested reads before the forwarder's first start, because a process only picks up group memberships when it starts.
+
+`/opt/splunkforwarder/etc/system/local/deploymentclient.conf`:
+
+```
+[deployment-client]
+
+[target-broker:deploymentServer]
+targetUri = 10.30.0.10:8089
+```
+
+`/opt/splunkforwarder/etc/system/local/outputs.conf`:
+
+```
+[tcpout]
+defaultGroup = soc_indexer
+
+[tcpout:soc_indexer]
+server = 10.30.0.10:9997
+```
+
+The forwarder's local admin comes from a `user-seed.conf` with a random password that never appears on screen:
+
+```bash
+printf '[user_info]\nUSERNAME = admin\nPASSWORD = %s\n' "$(openssl rand -base64 24)" | sudo -u splunkfwd tee /opt/splunkforwarder/etc/system/local/user-seed.conf > /dev/null
+sudo /opt/splunkforwarder/bin/splunk enable boot-start -systemd-managed 1 -user splunkfwd --accept-license --answer-yes --no-prompt
+sudo systemctl start SplunkForwarder
+```
+
+The file was created mode 664, and Splunk deleted it on first start. I confirmed it was gone and the unit was enabled:
+
+```bash
+systemctl is-enabled SplunkForwarder; sudo ls -l /opt/splunkforwarder/etc/system/local/
+```
+
+Within two minutes the forwarder phoned home, installed `soc_sensor_inputs` and connected to the indexer:
+
+```
+DeployedApplication - Installing app=soc_sensor_inputs to='/opt/splunkforwarder/etc/apps/soc_sensor_inputs'
+AutoLoadBalancedConnectionStrategy - Connected to idx=10.30.0.10:9997
+```
+
+sensor01 still had 1.6 GB available with Zeek, Suricata and the forwarder running.
+
+### Verification
+
+```
+index=zeek | stats count by sourcetype
+index=suricata | stats count by event_type
+index=suricata alert.signature_id=9000001 | table _time src_ip dest_ip alert.signature vlan{}
+index=zeek OR index=suricata | eval lag=_indextime-_time | stats count avg(lag) as avg_lag max(lag) as max_lag by index
+```
+
+Zeek arrived as `zeek:conn`, `zeek:ssl`, `zeek:dns`, `zeek:http`, `zeek:files`, `zeek:weird` and `zeek:capture_loss`. Suricata showed only `alert` and `anomaly`, so the nullQueue filter was working, and the test alert I fired after the install was there: `10.30.0.12` → `1.1.1.1`, `SOC-LAB NIDS pipeline test`, VLAN 30.
+
+The first lag figures were high (Suricata average 102 s, max 931 s) because the forwarder read eve.json from 14:38 and the current Zeek files from the start of the hour on its first run. Zeek also has inherent lag: a `conn.log` record's `ts` is when the connection started, but it's written when the connection ends.
+
+### Issue: HTTP parser anomalies
+
+I had kept `anomaly` events alongside alerts, expecting them to be the switch-frame decoder warnings from before the BPF fix. They weren't:
+
+```
+index=suricata event_type=anomaly | stats count min(_time) as first max(_time) as last by anomaly.type anomaly.event | convert ctime(first) ctime(last)
+```
+
+| anomaly.type | anomaly.event | count |
+| --- | --- | --- |
+| applayer | RESPONSE_HEADER_REPETITION | 1,613 (still firing) |
+| applayer | INVALID_GAP | 6 |
+| applayer | INVALID_RESPONSE_CHUNK_LEN | 2 |
+| applayer | UNABLE_TO_MATCH_RESPONSE_TO_REQUEST | 2 |
+
+These are HTTP parser warnings about responses that bend the protocol, about 35 a minute or 50,000 a day. They aren't detections and nothing in my use-case plan alerts on them, so I narrowed the keep rule to alerts only:
+
+```bash
+sudo -u splunk sed -i 's/"event_type":"(alert|anomaly)"/"event_type":"alert"/' /opt/splunk/etc/apps/TA-soc-homelab/default/transforms.conf
+sudo systemctl restart Splunkd
+```
+
+After the restart, a five-minute window held 848 Suricata events and no anomalies. They're still in eve.json on the sensor if an investigation needs them.
 
 ## Evidence
 
@@ -603,10 +694,29 @@ Screenshots are redacted: MAC addresses are blacked out.
 
 ![TA-soc-homelab parsing and nullQueue filter, the soc_sensor_inputs app and sensor server class on splunk01.](../../screenshots/build-log/14-zeek-suricata/14-splunk-parsing-filter.png)
 
-## Next in this step
+**Zeek sourcetypes in index=zeek, with the forwarder install, app deployment and indexer connection on sensor01.**
 
-- Install the Universal Forwarder on sensor01 as `splunkfwd`, in the `zeek` and `suricata` groups, pointing at the deployment server
-- Verify both indexes, timestamps and the alert-only filter, and confirm the license usage matches the estimate
+![Zeek sourcetypes in index=zeek, with the forwarder install, app deployment and indexer connection on sensor01.](../../screenshots/build-log/14-zeek-suricata/15-zeek-in-splunk.png)
+
+**Suricata in Splunk before the final change: only alerts and anomalies, nothing else from eve.json.**
+
+![Suricata in Splunk before the final change: only alerts and anomalies, nothing else from eve.json.](../../screenshots/build-log/14-zeek-suricata/16-suricata-event-types.png)
+
+**The local test rule's alert in Splunk.**
+
+![The local test rule's alert in Splunk.](../../screenshots/build-log/14-zeek-suricata/17-test-alert-in-splunk.png)
+
+**The anomalies were HTTP parser warnings, still firing, not switch noise.**
+
+![The anomalies were HTTP parser warnings, still firing, not switch noise.](../../screenshots/build-log/14-zeek-suricata/18-applayer-anomalies.png)
+
+**No anomalies indexed after narrowing the filter to alerts.**
+
+![No anomalies indexed after narrowing the filter to alerts.](../../screenshots/build-log/14-zeek-suricata/19-anomalies-stopped.png)
+
+**CDP disabled on the uplink and admin PC ports.**
+
+![CDP disabled on the uplink and admin PC ports.](../../screenshots/build-log/14-zeek-suricata/20-cdp-disabled.png)
 
 ## Backlog
 
