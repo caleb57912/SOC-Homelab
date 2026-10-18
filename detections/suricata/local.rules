@@ -1,0 +1,1 @@
+alert http any any -> any any (msg:"SOC-LAB NIDS pipeline test"; flow:to_server,established; http.uri; content:"/soc-lab-nids-test"; classtype:misc-activity; sid:9000001; rev:1;)
