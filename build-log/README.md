@@ -33,4 +33,4 @@ A record of how this SOC was built. Each step has two documents:
 
 | Step | Summary | Highlights | Deep dive |
 | --- | --- | --- | --- |
-| 3.1 | [TheHive](15-thehive.md) 🚧 | Sized three JVMs into a 6 GB VM from the vendor's current numbers; Cassandra 4.1 with authentication, localhost-only binding and the default superuser removed; fixed cqlsh on Python 3.12 | [details](deep-dives/15-thehive.md) |
+| 3.1 | [TheHive](15-thehive.md) | TheHive 5.8.1 with Cassandra 4.1 and Elasticsearch 8.19 in a 6 GB VM; both backends authenticated and localhost-only, scoped non-superuser service accounts, signed package verified, secrets kept out of the main config; traced a startup failure through three mismatched passwords; survived a reboot with the test case intact | [details](deep-dives/15-thehive.md) |

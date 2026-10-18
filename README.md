@@ -90,7 +90,7 @@ Endpoint Sysmon + Splunk UF + Wazuh agents · UDR firewall, IDS/IPS, DHCP & WiFi
 | Wazuh | Endpoint agents, FIM, vulnerability detection | ✅ Running |
 | MISP | Threat intelligence | ✅ Running |
 | Zeek + Suricata | Network monitoring and IDS | ✅ Running |
-| TheHive | Case management | 🔜 Planned |
+| TheHive | Case management | ✅ Running |
 | Shuffle | SOAR | 🔜 Planned |
 | Velociraptor | DFIR | 🔜 Planned |
 | Atomic Red Team | Benign detection validation on my own endpoint | 🔜 Planned |
