@@ -16,7 +16,7 @@
 > Every step I've completed so far, in order, with the decisions, issues and fixes behind each one.
 >
 > - **Phase 1 Foundation ✅** network segmentation, switch hardening, 8 SOC systems
-> - **Phase 2 Telemetry 🔄** Splunk, Pi-hole DNS logging, firewall / switch / hypervisor logs
+> - **Phase 2 Telemetry 🔄** Splunk, Pi-hole DNS logging, firewall / switch / hypervisor logs, Sysmon endpoint telemetry, Wazuh, MISP threat intel
 
 ## 🎯 Mission
 
@@ -87,8 +87,8 @@ Endpoint Sysmon + Splunk UF + Wazuh agents · UDR firewall, IDS/IPS, DHCP & WiFi
 |---|---|---|
 | Splunk | SIEM | ✅ Running |
 | Pi-hole | DNS logging | ✅ Running |
-| Wazuh | Endpoint agents, FIM, vulnerability detection | 🔜 Planned |
-| MISP | Threat intelligence | 🔜 Planned |
+| Wazuh | Endpoint agents, FIM, vulnerability detection | ✅ Running |
+| MISP | Threat intelligence | ✅ Running |
 | Zeek + Suricata | Network monitoring and IDS | 🔜 Planned |
 | TheHive | Case management | 🔜 Planned |
 | Shuffle | SOAR | 🔜 Planned |
