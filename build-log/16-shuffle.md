@@ -1,6 +1,6 @@
 # 3.2 · Shuffle: SOAR (in progress)
 
-**Status:** 🚧 In progress. Shuffle 2.3.0 runs in Docker on shuffle01 with its OpenSearch database, and a Shuffle workflow has created an alert in TheHive through a dedicated service account. The Splunk webhook trigger and the enrichment (MISP, VirusTotal, AbuseIPDB) come next.
+**Status:** 🚧 In progress. Shuffle 2.3.0 runs in Docker on shuffle01 with its OpenSearch database, and a Shuffle workflow has created an alert in TheHive through a dedicated service account. A webhook workflow now receives Splunk-shaped alerts; the Splunk alert itself and the enrichment (MISP, VirusTotal, AbuseIPDB) come next.
 
 ```mermaid
 flowchart LR
@@ -16,6 +16,7 @@ flowchart LR
 - **Only the web UI exposed:** OpenSearch, the backend API and the shuffle-security service bound to localhost; ports 3001/3443 are the only ones reachable from the network
 - **Secrets replaced before first start:** a generated OpenSearch admin password instead of the one published in the repo, and an encryption key for stored app credentials
 - **A TheHive service account** (`shuffle@soc.lan`, analyst, API key only) and a test workflow that created an alert in TheHive
+- **A webhook workflow** that parses a Splunk-shaped payload into a TheHive alert with IP observables (TheHive side still being fixed)
 
 ## Issues I ran into
 | Issue | Cause | What I did |
@@ -25,6 +26,9 @@ flowchart LR
 | The first workflow run would never have reached TheHive | New workflows start at a placeholder node that wasn't connected to the TheHive node | Deleted the placeholder so the TheHive node became the start node |
 | TheHive returned `400 Invalid json: Unrecognized token '$'` | The app's body template leaves unquoted placeholders like `${flag}` and `${tlp}` as literal text when their fields are empty | Replaced the template with a fixed JSON body; the run returned 201 |
 | Shuffle reported `"success": true` on the failed call | Shuffle's flag means the HTTP request completed, not that TheHive accepted it | Check `status` (201) and TheHive's own log instead |
+| Starting the webhook did nothing (`uninitialized`, then `{"success": false}`) | It was the only node in an unsaved workflow | Added and connected the TheHive node, saved, then started it |
+| A new TheHive node asked for a case ID | New nodes default to the app's first action, GET Get case timeline | Switched it to POST Create alert |
+| TheHive returned `400 Mismatch ... body as application/json` | Switching actions reset the node's headers, so the body went out without a JSON content type | In progress: setting `Content-Type=application/json` on the node |
 
 ## Decisions
 - **6 GB with a 2 GB OpenSearch heap**, rather than 4 GB with a 1 GB heap or a RAM rebalance first

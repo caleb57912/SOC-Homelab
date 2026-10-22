@@ -1,6 +1,6 @@
 # 3.2 · Shuffle (Deep Dive, in progress)
 
-Shuffle is the SOAR (security orchestration, automation and response) layer: it receives detections, enriches them and hands them to TheHive. This entry so far covers sizing shuffle01, Docker, installing Shuffle 2.3.0, locking down its ports and secrets, and the first workflow that creates a TheHive alert. The Splunk trigger and enrichment follow.
+Shuffle is the SOAR (security orchestration, automation and response) layer: it receives detections, enriches them and hands them to TheHive. This entry so far covers sizing shuffle01, Docker, installing Shuffle 2.3.0, locking down its ports and secrets, the first workflow that creates a TheHive alert, and the webhook that Splunk will call. Splunk's alert and enrichment follow.
 
 ## Sizing
 
@@ -232,11 +232,61 @@ flowchart LR
     B --> E[TheHive 400<br/>Unrecognized token '$']
 ```
 
+## Splunk → Shuffle: the webhook (in progress)
+
+The second workflow, `3.2 Splunk alert to TheHive`, starts from a **Webhook** trigger named `splunk_alert` instead of a manual run. Shuffle generates its URL:
+
+```
+http://10.30.0.20:3001/api/v1/hooks/webhook_<id>
+```
+
+It's served through the frontend on 3001, the only Shuffle port reachable from the network, so splunk01 can post to it.
+
+### Issue: the webhook stayed "uninitialized"
+
+Clicking **Start** on a webhook that was the only node in an unsaved workflow did nothing; the panel kept saying `Webhook: uninitialized`, and a test POST returned `{"success": false}`. Shuffle starts a webhook against the saved workflow, and this one had unsaved changes and no action after the trigger. After I added the TheHive node, connected the trigger to it and saved, **Start** switched the webhook to `running`.
+
+### Issue: a new node defaults to the first action
+
+The new TheHive node came up with **GET Get case timeline**, the first action in the app's list, which asks for a case ID and creates nothing. I switched it to **POST Create alert** and gave it a body built from the webhook data:
+
+```json
+{"type":"splunk","source":"splunk01","sourceRef":"$exec.sid","title":"$exec.search_name","description":"Splunk alert $exec.search_name. Signature: $exec.result.signature. $exec.result.src_ip -> $exec.result.dest_ip","severity":2,"tlp":2,"pap":2,"tags":["splunk","suricata"],"observables":[{"dataType":"ip","data":"$exec.result.src_ip"},{"dataType":"ip","data":"$exec.result.dest_ip"}]}
+```
+
+| Placeholder | Source |
+| --- | --- |
+| `$exec` | The JSON the webhook received |
+| `$exec.sid` | Splunk's search job ID, unique per run, used as TheHive's required unique `sourceRef` |
+| `$exec.search_name` | The Splunk alert's name |
+| `$exec.result.<field>` | Fields from the first result row (Splunk's webhook action sends only that row) |
+
+`tlp` and `pap` are 2 (AMBER) because these alerts carry internal addresses.
+
+### Testing with a payload shaped like Splunk's
+
+Before involving Splunk I posted the same shape Splunk's webhook action sends:
+
+```bash
+H="http://10.30.0.20:3001/api/v1/hooks/webhook_<id>"
+curl -s -X POST -d '{"sid":"manual-test-001","search_name":"Manual webhook test","result":{"src_ip":"192.168.1.11","dest_ip":"1.1.1.1","signature":"SOC-LAB local test rule"}}' "$H"
+```
+
+Shuffle answered `{"success": true, "execution_id": "..."}`, and the run showed the payload parsed into `$exec.sid`, `$exec.search_name` and `$exec.result.*`. The TheHive node then got a different 400:
+
+```
+"status": 400
+"message": "Mismatch for one of({body as application/json (UTF-8)}|{body as multipart/form-data}), expected 'app..."
+```
+
+TheHive only accepts an alert body declared as `application/json` (or a multipart upload), so it rejected this one before parsing it. The first workflow worked because its node kept the action's default headers. This node's **Headers** field held `Content-Type=application/json` while it was on Get case timeline, and switching the action reset it.
+
 ## Next
 
-- Splunk → Shuffle: a webhook trigger in Shuffle, a scheduled Splunk alert on Suricata test rule sid 9000001 with a webhook action, and an alert in TheHive with the source and destination IPs as observables
-- Enrichment: MISP lookups, VirusTotal and AbuseIPDB for those observables
-- Write-up, evidence and the HANDOFF update when the Phase 3 gate (a test alert reaching TheHive with enrichment) is met
+- Set the node's headers to `Content-Type=application/json` and `Accept=application/json`, restart the webhook and re-test with a new `sid`
+- Splunk: a scheduled alert on Suricata test rule sid 9000001 (dotted fields renamed so `$exec.result.*` can reach them) with a webhook action to Shuffle, then the full chain from a real detection
+- Enrichment: MISP lookups, VirusTotal and AbuseIPDB for the observables
+- Final write-up and HANDOFF update when the Phase 3 gate (a test alert reaching TheHive with enrichment) is met
 
 ## Evidence
 
@@ -264,11 +314,28 @@ flowchart LR
 
 ![The fixed workflow: 201 Created from /api/v1/alert.](../../screenshots/build-log/16-shuffle/06-alert-created-201.png)
 
+**A webhook started on an unsaved workflow with no action after it stays uninitialized.**
+
+![A webhook started on an unsaved workflow with no action after it stays uninitialized.](../../screenshots/build-log/16-shuffle/07-webhook-uninitialized.png)
+
+**A new TheHive node defaults to GET Get case timeline, the first action in the list.**
+
+![A new TheHive node defaults to GET Get case timeline, the first action in the list.](../../screenshots/build-log/16-shuffle/08-default-action-get-case-timeline.png)
+
+**The webhook running once the workflow had a connected action and was saved.**
+
+![The webhook running once the workflow had a connected action and was saved.](../../screenshots/build-log/16-shuffle/09-webhook-running.png)
+
+**The test payload parsed into $exec, and TheHive's 400 for a body without a JSON content type.**
+
+![The test payload parsed into $exec, and TheHive's 400 for a body without a JSON content type.](../../screenshots/build-log/16-shuffle/10-webhook-payload-content-type-400.png)
+
 ## Backlog
 
 - HTTPS for the Shuffle UI (3443 serves a self-signed certificate)
 - Pin `shuffle-security` by digest in the compose file
 - Back up the `shuffle-database` volume and `.env` (the encryption key can't be recreated)
+- An authentication header on the webhook (Shuffle supports one; Splunk's built-in webhook action can't send custom headers, so this needs a different alert action)
 - A host-level allow list for 3001/3443 (Default network and splunk01 only), applied in Docker's `DOCKER-USER` chain
 - Ship Shuffle and OpenSearch logs to Splunk
 - Revisit the OpenSearch heap after the baseline week
