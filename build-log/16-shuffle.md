@@ -1,10 +1,11 @@
 # 3.2 · Shuffle: SOAR (in progress)
 
-**Status:** 🚧 In progress. Shuffle 2.3.0 runs in Docker on shuffle01 with its OpenSearch database, and a Shuffle workflow has created an alert in TheHive through a dedicated service account. A webhook workflow now receives Splunk-shaped alerts; the Splunk alert itself and the enrichment (MISP, VirusTotal, AbuseIPDB) come next.
+**Status:** 🚧 In progress. Shuffle 2.3.0 runs in Docker on shuffle01. A Suricata detection now travels end to end: Splunk's scheduled alert posts to a Shuffle webhook, and the workflow creates a TheHive alert with the IPs as observables, through a dedicated service account. Enrichment (MISP, VirusTotal, AbuseIPDB) comes next.
 
 ```mermaid
 flowchart LR
-    SPL[splunk01<br/>alert webhook<br/>next] -.->|POST :3001| SH[shuffle01<br/>Shuffle 2.3.0]
+    SEN[sensor01<br/>Suricata] -->|UF| SPL[splunk01<br/>scheduled alert]
+    SPL -->|webhook HTTPS :3443| SH[shuffle01<br/>Shuffle 2.3.0]
     SH -->|POST /api/v1/alert<br/>service account| TH[thehive01<br/>TheHive 5.8.1]
     SH -.->|enrichment, next| EN[MISP · VirusTotal · AbuseIPDB]
 ```
@@ -16,7 +17,7 @@ flowchart LR
 - **Only the web UI exposed:** OpenSearch, the backend API and the shuffle-security service bound to localhost; ports 3001/3443 are the only ones reachable from the network
 - **Secrets replaced before first start:** a generated OpenSearch admin password instead of the one published in the repo, and an encryption key for stored app credentials
 - **A TheHive service account** (`shuffle@soc.lan`, analyst, API key only) and a test workflow that created an alert in TheHive
-- **A webhook workflow** that parses a Splunk-shaped payload into a TheHive alert with IP observables (TheHive side still being fixed)
+- **A Splunk alert on my Suricata test rule** with a webhook action, and a Shuffle workflow that turns its payload into a TheHive alert with IP observables
 
 ## Issues I ran into
 | Issue | Cause | What I did |
@@ -28,7 +29,11 @@ flowchart LR
 | Shuffle reported `"success": true` on the failed call | Shuffle's flag means the HTTP request completed, not that TheHive accepted it | Check `status` (201) and TheHive's own log instead |
 | Starting the webhook did nothing (`uninitialized`, then `{"success": false}`) | It was the only node in an unsaved workflow | Added and connected the TheHive node, saved, then started it |
 | A new TheHive node asked for a case ID | New nodes default to the app's first action, GET Get case timeline | Switched it to POST Create alert |
-| TheHive returned `400 Mismatch ... body as application/json` | Switching actions reset the node's headers, so the body went out without a JSON content type | In progress: setting `Content-Type=application/json` on the node |
+| TheHive returned `400 Mismatch ... body as application/json` | Switching actions reset the node's headers, so the body went out without a JSON content type | Set `Content-Type=application/json` and `Accept=application/json` on the node |
+| Test posts returned `success: true` but created nothing | I had re-added the webhook to the first test workflow, whose body has a fixed `sourceRef` that TheHive already had | Removed it, used the original webhook on the right workflow, and now check the title before editing |
+| TheHive returned `400 Invalid json: Unexpected character ('s')` | A dot right after a variable (`$exec.search_name.`) made Shuffle insert the whole `$exec` object, quotes included | Rewrote the description so no variable is followed by a dot; the run returned 201 |
+| Splunk said "Webhook URL is invalid" | The allow list was off (`enable_allowlist = false`); the form rejected the `http://` URL | Used Shuffle's HTTPS port, 3443; Splunk posted with HTTP 200 |
+| Each 5-minute run re-sent the same detection | The 15-minute search window overlaps three runs, and throttling wasn't ticked | Throttle the alert for 15 minutes (in progress) |
 
 ## Decisions
 - **6 GB with a 2 GB OpenSearch heap**, rather than 4 GB with a 1 GB heap or a RAM rebalance first
@@ -36,7 +41,9 @@ flowchart LR
 - **Bind internal ports to 127.0.0.1 in the compose file:** Docker writes its own iptables rules, so a host firewall would never see published ports
 - **A service account for Shuffle**, so every automated alert is attributed to `shuffle@soc.lan`, never to my own account
 - **Alerts, not cases:** detections arrive as TheHive alerts for triage; only real ones get promoted to cases
+- **Splunk's job ID as TheHive's reference:** it's unique per run, so TheHive's duplicate check can't silently drop a real alert
+- **No external lookups for private IPs:** enrichment will send only public addresses to VirusTotal and AbuseIPDB
 
-**Skills:** Docker and Compose · container port exposure · release pinning · OpenSearch sizing · secrets handling · SOAR workflow design · REST API integration · service accounts and API keys · troubleshooting from both ends of an API call
+**Skills:** Splunk alerting and webhooks · Docker and Compose · container port exposure · release pinning · OpenSearch sizing · secrets handling · SOAR workflow design · REST API integration · service accounts and API keys · troubleshooting from both ends of an API call
 
 ➡️ [Deep dive](deep-dives/16-shuffle.md)

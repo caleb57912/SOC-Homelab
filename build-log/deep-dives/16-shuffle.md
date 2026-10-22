@@ -1,6 +1,6 @@
 # 3.2 · Shuffle (Deep Dive, in progress)
 
-Shuffle is the SOAR (security orchestration, automation and response) layer: it receives detections, enriches them and hands them to TheHive. This entry so far covers sizing shuffle01, Docker, installing Shuffle 2.3.0, locking down its ports and secrets, the first workflow that creates a TheHive alert, and the webhook that Splunk will call. Splunk's alert and enrichment follow.
+Shuffle is the SOAR (security orchestration, automation and response) layer: it receives detections, enriches them and hands them to TheHive. This entry so far covers sizing shuffle01, Docker, installing Shuffle 2.3.0, locking down its ports and secrets, the first workflow that creates a TheHive alert, and the full chain from a Suricata detection through Splunk and Shuffle to a TheHive alert. Enrichment follows.
 
 ## Sizing
 
@@ -232,7 +232,7 @@ flowchart LR
     B --> E[TheHive 400<br/>Unrecognized token '$']
 ```
 
-## Splunk → Shuffle: the webhook (in progress)
+## Splunk → Shuffle → TheHive
 
 The second workflow, `3.2 Splunk alert to TheHive`, starts from a **Webhook** trigger named `splunk_alert` instead of a manual run. Shuffle generates its URL:
 
@@ -240,7 +240,7 @@ The second workflow, `3.2 Splunk alert to TheHive`, starts from a **Webhook** tr
 http://10.30.0.20:3001/api/v1/hooks/webhook_<id>
 ```
 
-It's served through the frontend on 3001, the only Shuffle port reachable from the network, so splunk01 can post to it.
+The frontend serves the same path over HTTPS on 3443. Both are the only Shuffle ports reachable from the network.
 
 ### Issue: the webhook stayed "uninitialized"
 
@@ -248,10 +248,46 @@ Clicking **Start** on a webhook that was the only node in an unsaved workflow di
 
 ### Issue: a new node defaults to the first action
 
-The new TheHive node came up with **GET Get case timeline**, the first action in the app's list, which asks for a case ID and creates nothing. I switched it to **POST Create alert** and gave it a body built from the webhook data:
+The new TheHive node came up with **GET Get case timeline**, the first action in the app's list, which asks for a case ID and creates nothing. I switched it to **POST Create alert**.
+
+### Testing with a payload shaped like Splunk's
+
+Before involving Splunk I posted the same shape Splunk's webhook action sends, from shuffle01:
+
+```bash
+H="http://10.30.0.20:3001/api/v1/hooks/webhook_<id>"
+curl -s -X POST -d '{"sid":"manual-test-001","search_name":"Manual webhook test","result":{"src_ip":"192.168.1.11","dest_ip":"1.1.1.1","signature":"SOC-LAB local test rule"}}' "$H"
+```
+
+Each test used a new `sid`, because TheHive refuses a second alert with the same `sourceRef`. Shuffle answered `{"success": true, "execution_id": "..."}` every time and parsed the payload into `$exec.sid`, `$exec.search_name` and `$exec.result.*`. Getting TheHive to accept the result took three fixes.
+
+**1. No content type.** The first run returned:
+
+```
+"status": 400
+"message": "Mismatch for one of({body as application/json (UTF-8)}|{body as multipart/form-data}), expected 'app..."
+```
+
+TheHive only accepts an alert body declared as `application/json` (or a multipart upload). The node's **Headers** field had held `Content-Type=application/json` while it was on Get case timeline, and switching the action cleared it. I set it back:
+
+```
+Content-Type=application/json
+Accept=application/json
+```
+
+**2. The webhook ended up on the wrong workflow.** Partway through, I lost the webhook node and added a new one, but to `3.2 test - TheHive alert`, the first test workflow, which has a fixed body with `sourceRef: shuffle-test-001`. Every POST to the new webhook returned `success: true` and created nothing, because TheHive already had that reference. The title bar was the only clue. I removed that webhook and went back to the original one on the right workflow. Since then I check the workflow title before every edit.
+
+**3. A dot after a variable.** With the headers fixed, TheHive returned:
+
+```
+"message": "Invalid json"
+"cause": "Unexpected character ('s' (code 115)): was expecting comma to separate Object entries"
+```
+
+My description field read `"Splunk alert $exec.search_name. Signature: $exec.result.signature. ..."`. Shuffle treats a dot after a variable as part of the path, so `$exec.search_name.` asked for an empty key inside `search_name`. That lookup failed, and the whole `$exec` object went into the string instead, quotes and all. The JSON string ended early, and the next character was the `s` of `sid`. I rewrote the description so that no variable is followed by a dot:
 
 ```json
-{"type":"splunk","source":"splunk01","sourceRef":"$exec.sid","title":"$exec.search_name","description":"Splunk alert $exec.search_name. Signature: $exec.result.signature. $exec.result.src_ip -> $exec.result.dest_ip","severity":2,"tlp":2,"pap":2,"tags":["splunk","suricata"],"observables":[{"dataType":"ip","data":"$exec.result.src_ip"},{"dataType":"ip","data":"$exec.result.dest_ip"}]}
+{"type":"splunk","source":"splunk01","sourceRef":"$exec.sid","title":"$exec.search_name","description":"Splunk alert: $exec.search_name | signature: $exec.result.signature | src: $exec.result.src_ip | dst: $exec.result.dest_ip","severity":2,"tlp":2,"pap":2,"tags":["splunk","suricata"],"observables":[{"dataType":"ip","data":"$exec.result.src_ip"},{"dataType":"ip","data":"$exec.result.dest_ip"}]}
 ```
 
 | Placeholder | Source |
@@ -261,31 +297,79 @@ The new TheHive node came up with **GET Get case timeline**, the first action in
 | `$exec.search_name` | The Splunk alert's name |
 | `$exec.result.<field>` | Fields from the first result row (Splunk's webhook action sends only that row) |
 
-`tlp` and `pap` are 2 (AMBER) because these alerts carry internal addresses.
+`tlp` and `pap` are 2 (AMBER) because these alerts carry internal addresses. The next test (`manual-test-005`) returned 201, and TheHive showed the alert with type `splunk`, source `splunk01`, tags `splunk` and `suricata`, severity medium and two `ip` observables. TheHive displays observables defanged (`192[.]168[.]1[.]1`) so they can't be clicked by accident; the stored values are unchanged.
 
-### Testing with a payload shaped like Splunk's
+```mermaid
+flowchart LR
+    V["description: $exec.search_name. Signature"] --> P["Shuffle reads path search_name + empty key"]
+    P --> R["Inserts the whole $exec object, quotes included"]
+    R --> E["TheHive 400: unexpected 's' (from sid)"]
+```
 
-Before involving Splunk I posted the same shape Splunk's webhook action sends:
+### The Splunk alert
+
+The detection is my Suricata test rule (sid 9000001, `curl http://1.1.1.1/soc-lab-nids-test` from my PC). Shuffle's `$exec.result.<field>` can't reach a field with a dot in its name, so the search flattens Suricata's dotted fields first:
+
+```
+index=suricata event_type=alert alert.signature_id=9000001
+| rename alert.signature AS signature, alert.severity AS ids_severity
+| table _time src_ip dest_ip dest_port signature ids_severity
+```
+
+Saved as alert `SOC - Suricata local test rule 9000001`: scheduled on cron `*/5 * * * *` over the last 15 minutes, trigger when results > 0, trigger once, with a **Webhook** action.
+
+### Issue: "Webhook URL is invalid"
+
+Splunk's alert form rejected `http://10.30.0.20:3001/...`. Splunk Enterprise does have a webhook allow list, but it's a setting in `alert_actions.conf`, not in Splunk Web, and it was off:
 
 ```bash
-H="http://10.30.0.20:3001/api/v1/hooks/webhook_<id>"
-curl -s -X POST -d '{"sid":"manual-test-001","search_name":"Manual webhook test","result":{"src_ip":"192.168.1.11","dest_ip":"1.1.1.1","signature":"SOC-LAB local test rule"}}' "$H"
+sudo -u splunk /opt/splunk/bin/splunk btool alert_actions list webhook --debug | grep -iE "allowlist|enable"
+```
+```
+/opt/splunk/etc/apps/alert_webhook/default/alert_actions.conf enable_allowlist = false
 ```
 
-Shuffle answered `{"success": true, "execution_id": "..."}`, and the run showed the payload parsed into `$exec.sid`, `$exec.search_name` and `$exec.result.*`. The TheHive node then got a different 400:
+So the form itself was rejecting the URL scheme. Shuffle's HTTPS port took it:
 
 ```
-"status": 400
-"message": "Mismatch for one of({body as application/json (UTF-8)}|{body as multipart/form-data}), expected 'app..."
+https://10.30.0.20:3443/api/v1/hooks/webhook_<id>
 ```
 
-TheHive only accepts an alert body declared as `application/json` (or a multipart upload), so it rejected this one before parsing it. The first workflow worked because its node kept the action's default headers. This node's **Headers** field held `Content-Type=application/json` while it was on Get case timeline, and switching the action reset it.
+### The full chain
+
+Splunk's own log of the alert action shows each run:
+
+```
+index=_internal sourcetype=splunkd component=sendmodalert action=webhook
+| table _time log_level event_message
+```
+```
+Invoking modular alert action=webhook for search="SOC - Suricata local test rule 9000001" sid="scheduler__admin__search__RMD580..._65"
+Sending POST request to url=https://10.30.0.20:3443/api/v1/hooks/webhook_<id> with size=462 bytes payload
+Webhook receiver responded with HTTP status=200
+Alert action script completed in duration=261 ms with exit code=0
+```
+
+In Shuffle the run came in with source `webhook` and Splunk's payload as `$exec`: `sid`, `search_name`, `app`, `owner`, `results_link` and `result` with the six table fields. The TheHive node returned 201. TheHive showed `SOC - Suricata local test rule 9000001`, created by Shuffle, with the Splunk job ID as its reference and my PC and `1.1.1.1` as observables.
+
+```mermaid
+flowchart LR
+    PC[curl from my PC] --> SEN[sensor01<br/>Suricata sid 9000001]
+    SEN -->|UF| SPL[splunk01<br/>alert every 5 min]
+    SPL -->|webhook HTTPS :3443| SH[shuffle01<br/>workflow]
+    SH -->|POST /api/v1/alert| TH[thehive01<br/>alert + 2 observables]
+```
+
+Three findings from that first real run:
+
+- **Splunk doesn't verify Shuffle's certificate.** Shuffle's certificate is self-signed and Splunk posted to it without complaint, so this HTTPS encrypts the traffic but doesn't prove the receiver is shuffle01.
+- **Duplicates.** The 21:40 and 21:45 runs both found the same Suricata event, because the 15-minute window overlaps three 5-minute runs, and each run created its own TheHive alert. Throttling was unticked when I saved the alert (it's visible in the evidence). Throttling the alert for 15 minutes stops the repeats.
+- **`results_link` uses `splunk01`.** That name doesn't resolve on my network, so the link in the alert doesn't open.
 
 ## Next
 
-- Set the node's headers to `Content-Type=application/json` and `Accept=application/json`, restart the webhook and re-test with a new `sid`
-- Splunk: a scheduled alert on Suricata test rule sid 9000001 (dotted fields renamed so `$exec.result.*` can reach them) with a webhook action to Shuffle, then the full chain from a real detection
-- Enrichment: MISP lookups, VirusTotal and AbuseIPDB for the observables
+- Throttle the Splunk alert and close the duplicate in TheHive
+- Enrichment: MISP for every observable; VirusTotal and AbuseIPDB for public IPs only. Sending private addresses like `192.168.1.11` to outside services would leak internal details and return nothing.
 - Final write-up and HANDOFF update when the Phase 3 gate (a test alert reaching TheHive with enrichment) is met
 
 ## Evidence
@@ -330,9 +414,45 @@ TheHive only accepts an alert body declared as `application/json` (or a multipar
 
 ![The test payload parsed into $exec, and TheHive's 400 for a body without a JSON content type.](../../screenshots/build-log/16-shuffle/10-webhook-payload-content-type-400.png)
 
+**The webhook added to the wrong workflow: 3.2 test - TheHive alert, whose node has a fixed sourceRef.**
+
+![The webhook added to the wrong workflow: 3.2 test - TheHive alert, whose node has a fixed sourceRef.](../../screenshots/build-log/16-shuffle/11-webhook-added-to-wrong-workflow.png)
+
+**TheHive's 400 when a dot after a variable pulled the whole $exec object into the description.**
+
+![TheHive's 400 when a dot after a variable pulled the whole $exec object into the description.](../../screenshots/build-log/16-shuffle/12-dot-after-variable-invalid-json.png)
+
+**The Splunk-shaped test payload creating an alert: 201.**
+
+![The Splunk-shaped test payload creating an alert: 201.](../../screenshots/build-log/16-shuffle/13-webhook-payload-201.png)
+
+**Splunk's alert form rejecting the http:// webhook URL (throttle still unticked).**
+
+![Splunk's alert form rejecting the http:// webhook URL (throttle still unticked).](../../screenshots/build-log/16-shuffle/14-splunk-webhook-url-invalid.png)
+
+**btool showing the webhook allow list is disabled, so it wasn't the cause.**
+
+![btool showing the webhook allow list is disabled, so it wasn't the cause.](../../screenshots/build-log/16-shuffle/15-splunk-allowlist-disabled.png)
+
+**Splunk's alert action log: POST to Shuffle over HTTPS, HTTP 200, exit code 0, twice.**
+
+![Splunk's alert action log: POST to Shuffle over HTTPS, HTTP 200, exit code 0, twice.](../../screenshots/build-log/16-shuffle/16-splunk-webhook-sent-200.png)
+
+**The Shuffle run started by Splunk: its payload in $exec and 201 from TheHive.**
+
+![The Shuffle run started by Splunk: its payload in $exec and 201 from TheHive.](../../screenshots/build-log/16-shuffle/17-shuffle-run-from-splunk-201.png)
+
+**The resulting TheHive alert, referenced by the Splunk job ID, with both IPs as observables.**
+
+![The resulting TheHive alert, referenced by the Splunk job ID, with both IPs as observables.](../../screenshots/build-log/16-shuffle/18-thehive-alert-from-splunk.png)
+
 ## Backlog
 
-- HTTPS for the Shuffle UI (3443 serves a self-signed certificate)
+- A trusted certificate for Shuffle (3443 serves a self-signed one, and Splunk's webhook action doesn't verify certificates)
+- Make `results_link` usable: a Pi-hole DNS record for `splunk01`, or Splunk's server name set to its IP
+- Escape double quotes in Splunk field values before they go into the webhook, so a signature containing `"` can't break the JSON body
+- Splunk sends only the first result row; detections with several rows need per-row handling without colliding `sourceRef` values
+- Remove the unused first test workflow
 - Pin `shuffle-security` by digest in the compose file
 - Back up the `shuffle-database` volume and `.env` (the encryption key can't be recreated)
 - An authentication header on the webhook (Shuffle supports one; Splunk's built-in webhook action can't send custom headers, so this needs a different alert action)
