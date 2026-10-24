@@ -1,6 +1,6 @@
-# 3.2 · Shuffle (Deep Dive, in progress)
+# 3.2 · Shuffle (Deep Dive)
 
-Shuffle is the SOAR (security orchestration, automation and response) layer: it receives detections, enriches them and hands them to TheHive. This entry so far covers sizing shuffle01, Docker, installing Shuffle 2.3.0, locking down its ports and secrets, the first workflow that creates a TheHive alert, and the full chain from a Suricata detection through Splunk and Shuffle to a TheHive alert. Enrichment follows.
+Shuffle is the SOAR (security orchestration, automation and response) layer: it receives detections, enriches them and hands them to TheHive. This entry covers sizing shuffle01, Docker, installing Shuffle 2.3.0, locking down its ports and secrets, the chain from a Suricata detection through Splunk and Shuffle to a TheHive alert, and enriching that alert with MISP, VirusTotal and AbuseIPDB.
 
 ## Sizing
 
@@ -366,11 +366,150 @@ Three findings from that first real run:
 - **Duplicates.** The 21:40 and 21:45 runs both found the same Suricata event, because the 15-minute window overlaps three 5-minute runs, and each run created its own TheHive alert. Throttling was unticked when I saved the alert (it's visible in the evidence). Throttling the alert for 15 minutes stops the repeats.
 - **`results_link` uses `splunk01`.** That name doesn't resolve on my network, so the link in the alert doesn't open.
 
-## Next
+Throttling the alert for 15 minutes (Search & Reporting → Alerts → Edit Alert → Throttle) stopped the repeats; one Suricata event now produces one TheHive alert.
 
-- Throttle the Splunk alert and close the duplicate in TheHive
-- Enrichment: MISP for every observable; VirusTotal and AbuseIPDB for public IPs only. Sending private addresses like `192.168.1.11` to outside services would leak internal details and return nothing.
-- Final write-up and HANDOFF update when the Phase 3 gate (a test alert reaching TheHive with enrichment) is met
+## Enrichment
+
+The Phase 3 gate is a test alert reaching TheHive *with enrichment*. Shuffle looks up the destination IP in three sources before it creates the alert, and writes the results into the alert's description, so the analyst sees the context when the alert opens instead of pivoting through three other tools.
+
+```mermaid
+flowchart LR
+    W[Webhook<br/>splunk_alert] --> M[MISP<br/>attribute search]
+    M --> V[VirusTotal<br/>IP report]
+    V --> A[AbuseIPDB<br/>check IP]
+    A --> T[TheHive<br/>alert + enrichment]
+```
+
+Only the destination is enriched. In this detection the source is always one of my own machines, and sending a `192.168.x.x` address to VirusTotal or AbuseIPDB would leak a detail of my network and return nothing.
+
+### Keys
+
+Each service got its own key, tested from shuffle01 before Shuffle used it, read with `read -rs` and passed to curl through a config file so it never appeared on screen:
+
+```bash
+read -rs K; echo; echo "${#K}"
+curl -s -o ~/vt.json -w "%{http_code}\n" -K <(printf 'header = "x-apikey: %s"\n' "$K") https://www.virustotal.com/api/v3/ip_addresses/1.1.1.1
+curl -s -w "\n%{http_code}\n" -K <(printf 'header = "Key: %s"\nheader = "Accept: application/json"\n' "$K") "https://api.abuseipdb.com/api/v2/check?ipAddress=1.1.1.1&maxAgeInDays=90"
+curl -sk -w "\n%{http_code}\n" -K <(printf 'header = "Authorization: %s"\nheader = "Accept: application/json"\nheader = "Content-Type: application/json"\n' "$K") -d '{"returnFormat":"json","value":"1.1.1.1","limit":3}' https://10.30.0.30/attributes/restSearch
+unset K
+```
+
+Printing the key length first caught a bad paste: the first VirusTotal key read as 171 characters instead of 64, and the lookup returned nothing until I re-copied it with the site's copy button.
+
+| Service | Key | Result for 1.1.1.1 |
+| --- | --- | --- |
+| VirusTotal | Free tier (4/min, 500/day) | 0 malicious, 57 harmless, Cloudflare |
+| AbuseIPDB | Free plan, API v2 | Confidence 0 despite 162 reports, `isWhitelisted: true` |
+| MISP | New user `shuffle@soc.lan`, role **API Read Only** (same as Splunk's), key read-only and locked to `10.30.0.20/32` | Hit in event 918, `to_ids: false`, comment "False Positive?" |
+
+The results disagree on the surface, and that's the point of having three. 1.1.1.1 has plenty of abuse reports and sits in a threat feed, yet every source that knows it marks it benign: AbuseIPDB whitelists it and the MISP feed itself says it isn't fit for detection. A raw "MISP hit" would have looked alarming on its own.
+
+### Issue: MISP's auth key form couldn't see the new user
+
+The user existed (I checked in the database), but the **Add authentication key** dropdown only listed the admin. `cake user authkey` turned out to look up an existing key's owner, not create one. The add-key page accepts the user ID in the URL, which skips the dropdown:
+
+```bash
+sudo mysql misp -e "SELECT u.id,u.email,u.disabled,r.name,r.perm_auth FROM users u JOIN roles r ON r.id=u.role_id;"
+sudo -u www-data /var/www/MISP/app/Console/cake user change_role shuffle@soc.lan 7
+```
+```
+https://10.30.0.30/auth_keys/add/3
+```
+
+### Building the nodes
+
+Each new node defaulted to its app's first action again (MISP came up as **POST Add a feed**), so I set every action by hand:
+
+| Node | Action | Input |
+| --- | --- | --- |
+| MISP 1 | POST `/attributes/restSearch` | Body `{"returnFormat":"json","value":"$exec.result.dest_ip","limit":5}`, SSL verify off (self-signed) |
+| Virustotal v3 1 | Get an IP address report | `$exec.result.dest_ip` |
+| AbuseIPDB v2 1 | Get check ip | `$exec.result.dest_ip`, query `maxAgeInDays=90` (the API defaults to 30) |
+| TheHive 1 | POST Create alert | Body below |
+
+Connecting AbuseIPDB to TheHive failed with "Cant make branch to starting node": TheHive was still the start node from before the webhook existed. Setting MISP as the start node fixed it; the webhook trigger always feeds whichever node is the start.
+
+The TheHive body adds an enrichment block built from the other nodes' results:
+
+```json
+{"type":"splunk","source":"splunk01","sourceRef":"$exec.sid","title":"$exec.search_name","description":"**Detection**\n\n- Splunk alert: $exec.search_name\n- Signature: $exec.result.signature\n- Source: $exec.result.src_ip\n- Destination: $exec.result.dest_ip\n\n**Enrichment for $exec.result.dest_ip**\n\n- VirusTotal: $virustotal_v3_1.body.data.attributes.last_analysis_stats.malicious malicious, $virustotal_v3_1.body.data.attributes.last_analysis_stats.harmless harmless (owner: $virustotal_v3_1.body.data.attributes.as_owner)\n- AbuseIPDB: score $abuseipdb_v2_1.body.data.abuseConfidenceScore, $abuseipdb_v2_1.body.data.totalReports reports, whitelisted: $abuseipdb_v2_1.body.data.isWhitelisted (ISP: $abuseipdb_v2_1.body.data.isp)\n- MISP: event $misp_1.body.response.Attribute.#0.event_id, to_ids: $misp_1.body.response.Attribute.#0.to_ids, comment: $misp_1.body.response.Attribute.#0.comment","severity":2,"tlp":2,"pap":2,"tags":["splunk","suricata","enriched"],"observables":[{"dataType":"ip","data":"$exec.result.src_ip"},{"dataType":"ip","data":"$exec.result.dest_ip"}]}
+```
+
+No variable is followed by a dot, and `.#0` picks the first entry of MISP's attribute list.
+
+### Issue: runs stuck at "No results yet"
+
+The first enrichment runs never got past the start. Two causes, one after the other.
+
+**Every app ran three copies.** With the new apps running, the VM was down to 292 MiB available:
+
+```bash
+sudo docker stats --no-stream --format 'table {{.Name}}\t{{.MemUsage}}' | sort -k2 -h | tail -15
+sudo docker service ls --format 'table {{.Name}}\t{{.Replicas}}'
+```
+
+Orborus runs each app as a Docker swarm service, and every one was at `3/3`, about 75–100 MB per copy, including apps this workflow never calls. `SHUFFLE_APP_REPLICAS=3` in `.env` looked like the cause, but after setting it to 1, Orborus's environment showed `SHUFFLE_APP_REPLICAS=1` and it still created three copies; 2.3.0 ignores the setting for swarm services. Scaling the services directly worked and has held:
+
+```bash
+sudo docker service ls --format '{{.Name}}' | grep -v '^shuffle-workers$' | xargs -I{} sudo docker service scale -d {}=1
+```
+
+Available memory went back to about 1.4 GiB.
+
+**I removed services under a running Shuffle.** My first fix deleted the app services so Orborus would recreate them. The worker still had their addresses cached, so the next run's MISP step went nowhere:
+
+```
+[ERROR] ... URL: http://misp_1-1-0:33341/api/v1/run. Error: Post "http://misp_1-1-0:33341/api/v1/run": dial tcp: lookup misp
+```
+
+Restarting the worker (`docker service update --force shuffle-workers`) cleared the cache, but it also orphaned a run that was in flight: AbuseIPDB answered that run and posted its result to the old worker container, which timed out. Runs started after the restart finished normally, `FINISHED - 4/4` in about 10 seconds. The worker log was what showed each of these; the Shuffle UI only ever said "No results yet".
+
+```bash
+sudo docker service logs --since 10m --raw shuffle-workers 2>&1 | grep "$ID" | grep -iE "error|towards|Received|FINISHED"
+```
+
+Shuffle also starts a `tenzir-node` container (a data pipeline engine, image `tenzir/tenzir:main`) that uses about 660 MB and isn't part of this workflow. I stopped it and turned off its restart policy, and Orborus started it again within seconds, so it stays for now.
+
+### Issue: the AbuseIPDB app sends its key in the URL
+
+The AbuseIPDB node's result showed the request it made:
+
+```
+"url": "https://api.abuseipdb.com/api/v2/check?key=<KEY>..."
+```
+
+This app passes the API key as a query parameter, so every run stores it in plain text in Shuffle's execution history in OpenSearch. I had also pasted part of that output into my notes, so I treated the key as exposed: I deleted it in AbuseIPDB and created a new one. The VirusTotal and MISP nodes send their keys in headers, and their recorded URLs carry no key.
+
+### Issue: a failed lookup still produced an alert
+
+After the rotation, the next alert from Splunk showed `AbuseIPDB: score , reports, whitelisted: (ISP: )`. The node had returned **401** with the old, deleted key in its URL: editing the existing auth entry hadn't changed the key the node used. I created a fresh authentication entry with the new key, selected it in the node, and removed the old entries. The next run returned 200.
+
+The failure itself is the finding: AbuseIPDB's error left every path empty, Shuffle filled the description with blanks, and TheHive accepted the alert. An analyst can't tell "no reputation data" from "the lookup failed". Handling empty results is on the backlog.
+
+### The gate
+
+A Splunk-shaped test (`manual-test-011`) and a real detection (`scheduler__admin__search__RMD580..._422`, signature `SOC-LAB NIDS pipeline test`) both produced enriched alerts. The final description:
+
+```
+Detection
+- Splunk alert: Manual webhook test
+- Signature: SOC-LAB local test rule
+- Source: 192.168.1.11
+- Destination: 1.1.1.1
+
+Enrichment for 1.1.1.1
+- VirusTotal: 0 malicious, 57 harmless (owner: Cloudflare, Inc.)
+- AbuseIPDB: score 0, 162 reports, whitelisted: True (ISP: APNIC and Cloudflare DNS Resolver project)
+- MISP: event 918, to_ids: False, comment: False Positive?
+```
+
+That meets the Phase 3 gate: a test alert reaches TheHive with enrichment.
+
+| Memory on shuffle01 | Available |
+| --- | --- |
+| After first start | 2.5 GiB |
+| Enrichment apps at 3 copies each, plus tenzir-node | 292 MiB |
+| App services scaled to 1 | 1.4–1.8 GiB |
 
 ## Evidence
 
@@ -446,7 +585,58 @@ Three findings from that first real run:
 
 ![The resulting TheHive alert, referenced by the Splunk job ID, with both IPs as observables.](../../screenshots/build-log/16-shuffle/18-thehive-alert-from-splunk.png)
 
+**All three enrichment keys tested from shuffle01: VirusTotal, AbuseIPDB and MISP, each with HTTP 200 and the key never printed.**
+
+![All three enrichment keys tested from shuffle01: VirusTotal, AbuseIPDB and MISP, each with HTTP 200 and the key never printed.](../../screenshots/build-log/16-shuffle/19-enrichment-keys-tested.png)
+
+**The new MISP node defaulting to POST Add a feed.**
+
+![The new MISP node defaulting to POST Add a feed.](../../screenshots/build-log/16-shuffle/20-misp-node-defaults-to-add-feed.png)
+
+**MISP users and roles: shuffle@soc.lan enabled, and both read-only roles with API access but no add permission.**
+
+![MISP users and roles: shuffle@soc.lan enabled, and both read-only roles with API access but no add permission.](../../screenshots/build-log/16-shuffle/21-misp-roles-api-access.png)
+
+**The enrichment chain: webhook, MISP (start node), VirusTotal, AbuseIPDB, TheHive.**
+
+![The enrichment chain: webhook, MISP (start node), VirusTotal, AbuseIPDB, TheHive.](../../screenshots/build-log/16-shuffle/22-enrichment-chain-canvas.png)
+
+**A run stuck at "No results yet".**
+
+![A run stuck at "No results yet".](../../screenshots/build-log/16-shuffle/23-run-stuck-no-results.png)
+
+**Every app service at three copies, and tenzir-node using 663 MiB.**
+
+![Every app service at three copies, and tenzir-node using 663 MiB.](../../screenshots/build-log/16-shuffle/24-app-services-three-replicas.png)
+
+**tenzir-node stopped and back within seconds; the next run stuck with the app services gone.**
+
+![tenzir-node stopped and back within seconds; the next run stuck with the app services gone.](../../screenshots/build-log/16-shuffle/25-tenzir-restarted-and-run-stuck.png)
+
+**Orborus receiving SHUFFLE_APP_REPLICAS=1 while the services were back at 3/3, and the worker waiting on AbuseIPDB.**
+
+![Orborus receiving SHUFFLE_APP_REPLICAS=1 while the services were back at 3/3, and the worker waiting on AbuseIPDB.](../../screenshots/build-log/16-shuffle/26-orborus-ignores-replicas-setting.png)
+
+**Services scaled to 1/1, the orphaned run explained in AbuseIPDB's log, and the next run FINISHED 4/4.**
+
+![Services scaled to 1/1, the orphaned run explained in AbuseIPDB's log, and the next run FINISHED 4/4.](../../screenshots/build-log/16-shuffle/27-scaled-to-one-run-finished.png)
+
+**A real Splunk alert after the key rotation: the AbuseIPDB line blank because the node still used the deleted key.**
+
+![A real Splunk alert after the key rotation: the AbuseIPDB line blank because the node still used the deleted key.](../../screenshots/build-log/16-shuffle/28-splunk-alert-abuseipdb-blank.png)
+
+**The gate: an alert in TheHive enriched by VirusTotal, AbuseIPDB and MISP.**
+
+![The gate: an alert in TheHive enriched by VirusTotal, AbuseIPDB and MISP.](../../screenshots/build-log/16-shuffle/29-enriched-alert.png)
+
 ## Backlog
+
+- Skip VirusTotal and AbuseIPDB when the destination is a private address (needed once detections have internal destinations)
+- Handle empty or failed lookups so the description says "no data" or "lookup failed" instead of blanks
+- Replace the AbuseIPDB app with one that sends the key in the `Key` header, so it stops landing in execution history
+- Watch for Orborus recreating app services at three copies (after app updates or restarts) and scale them back; find a supported way to set the count
+- Decide on `tenzir-node` (about 660 MB, unpinned `main` image): find how Shuffle starts it and whether it can be disabled
+- Avoid restarting the worker while runs are in flight; it orphans their results
 
 - A trusted certificate for Shuffle (3443 serves a self-signed one, and Splunk's webhook action doesn't verify certificates)
 - Make `results_link` usable: a Pi-hole DNS record for `splunk01`, or Splunk's server name set to its IP
