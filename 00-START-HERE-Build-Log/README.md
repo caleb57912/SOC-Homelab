@@ -5,6 +5,8 @@ A record of how this SOC was built. Each step has two documents:
 - **Summary** (this folder): what was done, the key decisions, and the result. A 2-minute read.
 - **Deep dive** (`deep-dives/`): the full configs, commands and issues behind each step.
 
+What's next, and the improvement backlog: [Roadmap](ROADMAP.md).
+
 ## Phase 1: Foundation ✅
 
 | Step | Summary | Highlights | Deep dive |

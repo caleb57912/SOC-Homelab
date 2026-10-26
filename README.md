@@ -12,11 +12,14 @@
 
 ---
 
-> ### 📖 Start here: [**Build Log →**](build-log/)
+> ### 📖 Start here: [**Build Log →**](00-START-HERE-Build-Log/)
 > Every step I've completed so far, in order, with the decisions, issues and fixes behind each one.
 >
 > - **Phase 1 Foundation ✅** network segmentation, switch hardening, 8 SOC systems
 > - **Phase 2 Telemetry ✅** Splunk, Pi-hole DNS logging, firewall / switch / hypervisor logs, Sysmon endpoint telemetry, Wazuh, MISP threat intel, Zeek + Suricata on a SPAN feed
+> - **Phase 3 Response 🚧** TheHive case management, Shuffle SOAR enrichment (MISP, VirusTotal, AbuseIPDB), Velociraptor DFIR; baseline week recording
+>
+> 🗺️ [**Roadmap →**](00-START-HERE-Build-Log/ROADMAP.md) what's next, and the improvement backlog
 
 ## 🎯 Mission
 
@@ -126,13 +129,12 @@ Endpoint Sysmon + Splunk UF + Wazuh agents · UDR firewall, IDS/IPS, DHCP & WiFi
 
 ## 📁 Repository map
 
-Folders other than `build-log/` fill in as later phases are built.
+Folders other than `00-START-HERE-Build-Log/` fill in as later phases are built.
 
 
 | Folder | What's inside |
 |---|---|
-| [`build-log/`](build-log) | **Step-by-step record of the build so far** |
-| [`docs/`](docs) | Architecture and analyst runbooks |
+| [`00-START-HERE-Build-Log/`](00-START-HERE-Build-Log) | **Step-by-step record of the build so far** |
 | [`infrastructure/`](infrastructure) | Hypervisor, network, and system documentation |
 | [`siem/splunk/`](siem/splunk) | Searches, saved alerts, dashboards |
 | [`siem/wazuh/`](siem/wazuh) | Agent configuration and rules |

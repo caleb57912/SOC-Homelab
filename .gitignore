@@ -4,3 +4,4 @@
 .env
 *secret*
 *.bak
+Claude outputs/
