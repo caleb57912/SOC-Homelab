@@ -1,6 +1,6 @@
 # 🗺️ Roadmap
 
-_Updated 2026-10-26._
+_Updated 2026-10-27._
 
 Where the build stands, what comes next, and the improvements queued alongside it. Write-ups for every finished step are in the [Build Log](README.md).
 
@@ -31,7 +31,7 @@ flowchart TB
         direction TB
         subgraph DONE["Done"]
             direction LR
-            D1["baseline<br/>summary index"] --> D2["daily report<br/>00:15 UTC"] --> D3["10/24 + 10/25<br/>backfilled"]
+            D1["baseline<br/>summary index"] --> D2["daily report<br/>00:15 UTC"] --> D3["10/24–10/26<br/>recorded"] --> D4["baseline<br/>dashboard"] --> D5["silence alert:<br/>a source stops sending"]
         end
         subgraph AUTO["Records nightly"]
             direction LR
@@ -39,7 +39,7 @@ flowchart TB
         end
         subgraph NEXT["Next"]
             direction LR
-            N1["baseline<br/>dashboard"] --> N2["silence alert:<br/>a source stops sending"]
+            N1["watch the alert's<br/>first firings"] --> N2["tune thresholds"]
         end
         subgraph END["After 7 days"]
             direction LR
@@ -60,7 +60,7 @@ flowchart TB
     classDef now fill:#b8860b,stroke:#ffd166,color:#000000,stroke-width:3px
     classDef auto fill:#1d4e89,stroke:#4c8ed9,color:#ffffff
     classDef todo fill:#3a3f47,stroke:#8a929c,color:#ffffff
-    class A1,A2,A3,D1,D2,D3 done
+    class A1,A2,A3,D1,D2,D3,D4,D5 done
     class A4 now
     class R1 auto
     class N1,N2,E1,E2,E3,F1,F2,F3,F4 todo
@@ -93,7 +93,9 @@ flowchart LR
         b6["Monitor Zeek capture loss<br/>and Suricata drops"]
         b7["Non-admin Splunk<br/>analyst account"]
         b8["Velociraptor linked to<br/>TheHive/Shuffle"]
-        b1 --> b2 --> b3 --> b4 --> b5 --> b6 --> b7 --> b8
+        b9["Alert when the daily<br/>baseline run writes 0 rows"]
+        b10["Silence alerts<br/>into TheHive"]
+        b1 --> b2 --> b3 --> b4 --> b5 --> b6 --> b7 --> b8 --> b9 --> b10
     end
 
     subgraph T3["③ Hardening · access + encryption"]
@@ -124,8 +126,9 @@ flowchart LR
         e3["Velociraptor client<br/>event monitoring"]
         e4["Shuffle worker tuning,<br/>pin remaining images"]
         e5["Baseline search<br/>safe to rerun"]
-        e6["misp-modules<br/>if RAM allows"]
-        e1 --> e2 --> e3 --> e4 --> e5 --> e6
+        e6["Tune silence thresholds;<br/>zeek:ssh, Catalyst expected?"]
+        e7["misp-modules<br/>if RAM allows"]
+        e1 --> e2 --> e3 --> e4 --> e5 --> e6 --> e7
     end
 
     T1 ==> T2 ==> T3
@@ -139,10 +142,10 @@ flowchart LR
     classDef cov fill:#1f6f43,stroke:#2ea86b,color:#ffffff
     classDef tune fill:#3a3f47,stroke:#8a929c,color:#ffffff
     class a1,a2,a3,a4,a5,a6 now
-    class b1,b2,b3,b4,b5,b6,b7,b8 pre
+    class b1,b2,b3,b4,b5,b6,b7,b8,b9,b10 pre
     class c1,c2,c3,c4,c5,c6 hard
     class d1,d2,d3,d4,d5 cov
-    class e1,e2,e3,e4,e5,e6 tune
+    class e1,e2,e3,e4,e5,e6,e7 tune
 ```
 
 Backups come first on purpose: Phase 4 triggers detections on live systems, so restore points should exist before that starts.

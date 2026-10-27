@@ -84,7 +84,7 @@
       "type": "ds.search",
       "name": "silence",
       "options": {
-        "query": "index=baseline source=baseline_daily earliest=-15d@d latest=@d\n| dedup day orig_index orig_sourcetype orig_source orig_host\n| stats dc(day) as days_seen avg(active_hours) as avg_hours by orig_index orig_sourcetype orig_source orig_host\n| rename orig_index as index, orig_sourcetype as sourcetype, orig_source as source, orig_host as host\n| where days_seen>=2\n| append [| tstats latest(_time) as last_seen where index=* NOT index=baseline earliest=-4d by index sourcetype source host]\n| stats max(days_seen) as days_seen max(avg_hours) as avg_hours max(last_seen) as last_seen by index sourcetype source host\n| where isnotnull(days_seen)\n| eval threshold_h=case(avg_hours>=20,2, avg_hours>=8,26, true(),74)\n| eval silent_h=round((now()-coalesce(last_seen,relative_time(now(),\"-4d\")))/3600,1)\n| eval status=if(silent_h>threshold_h,\"SILENT\",\"ok\"), avg_hours=round(avg_hours,1), last_seen=if(isnull(last_seen),\"none in 4 days\",strftime(last_seen,\"%F %T\"))\n| sort - status index sourcetype\n| table status index sourcetype source host days_seen avg_hours threshold_h silent_h last_seen",
+        "query": "index=baseline source=baseline_daily earliest=-15d@d latest=@d\n| dedup day orig_index orig_sourcetype orig_source orig_host\n| stats dc(day) as days_seen avg(active_hours) as avg_hours by orig_index orig_sourcetype orig_source orig_host\n| rename orig_index as index, orig_sourcetype as sourcetype, orig_source as source, orig_host as host\n| where days_seen>=2\n| append [| tstats latest(_time) as last_seen where index=* NOT index=baseline earliest=-4d by index sourcetype source host]\n| stats max(days_seen) as days_seen max(avg_hours) as avg_hours max(last_seen) as last_seen by index sourcetype source host\n| where isnotnull(days_seen)\n| eval threshold_h=case(avg_hours>=20,2, avg_hours>=8,26, true(),74)\n| eval silent_h=round((now()-coalesce(last_seen,relative_time(now(),\"-4d\")))/3600,1)\n| eval status=if(silent_h>threshold_h,\"SILENT\",\"ok\"), avg_hours=round(avg_hours,1), last_seen=if(isnull(last_seen),\"none in 4 days\",strftime(last_seen,\"%F %T\"))\n| eval source=replace(replace(source,\"^XmlWinEventLog:(Microsoft-Windows-)?\",\"\"),\"^.*/\",\"\")\n| sort - status index sourcetype\n| table status index sourcetype source host days_seen avg_hours threshold_h silent_h last_seen",
         "queryParameters": {
           "earliest": "-15d@d",
           "latest": "now"
@@ -98,6 +98,9 @@
       "title": "Days recorded",
       "dataSources": {
         "primary": "ds_days"
+      },
+      "options": {
+        "majorFontSize": 34
       }
     },
     "viz_sources": {
@@ -105,6 +108,9 @@
       "title": "Sources on the last day",
       "dataSources": {
         "primary": "ds_sources"
+      },
+      "options": {
+        "majorFontSize": 34
       }
     },
     "viz_events": {
@@ -112,6 +118,9 @@
       "title": "Events on the last day",
       "dataSources": {
         "primary": "ds_events"
+      },
+      "options": {
+        "majorFontSize": 34
       }
     },
     "viz_by_index": {
@@ -123,32 +132,35 @@
       "options": {
         "stackMode": "stacked",
         "xAxisTitleText": "Day (UTC)",
-        "yAxisTitleText": "Events"
+        "yAxisTitleText": "Events",
+        "legendDisplay": "bottom"
       }
     },
     "viz_per_source": {
       "type": "splunk.table",
-      "title": "Per source: daily volume and active hours",
+      "title": "Per source: volume and active hours",
       "dataSources": {
         "primary": "ds_per_source"
       },
       "options": {
-        "count": 50
+        "count": 25,
+        "fontSize": "small"
       }
     },
     "viz_hours": {
       "type": "splunk.table",
-      "title": "Active hours per source per day (of 24)",
+      "title": "Active hours per source per day",
       "dataSources": {
         "primary": "ds_hours"
       },
       "options": {
-        "count": 50
+        "count": 25,
+        "fontSize": "small"
       }
     },
     "viz_trend": {
       "type": "splunk.line",
-      "title": "Daily events per source (log scale)",
+      "title": "Daily events per source (log)",
       "dataSources": {
         "primary": "ds_trend"
       },
@@ -156,17 +168,18 @@
         "yAxisScale": "log",
         "xAxisTitleText": "Day (UTC)",
         "yAxisTitleText": "Events",
-        "legendDisplay": "right"
+        "legendDisplay": "off"
       }
     },
     "viz_silence": {
       "type": "splunk.table",
-      "title": "Expected sources: silence check (same logic as the alert)",
+      "title": "Silence check (alert logic)",
       "dataSources": {
         "primary": "ds_silence"
       },
       "options": {
-        "count": 50
+        "count": 25,
+        "fontSize": "small"
       }
     }
   },
@@ -187,7 +200,7 @@
           "x": 0,
           "y": 0,
           "w": 480,
-          "h": 150
+          "h": 90
         }
       },
       {
@@ -197,7 +210,7 @@
           "x": 480,
           "y": 0,
           "w": 480,
-          "h": 150
+          "h": 90
         }
       },
       {
@@ -207,7 +220,7 @@
           "x": 960,
           "y": 0,
           "w": 480,
-          "h": 150
+          "h": 90
         }
       },
       {
@@ -215,9 +228,19 @@
         "type": "block",
         "position": {
           "x": 0,
-          "y": 150,
-          "w": 1440,
-          "h": 450
+          "y": 90,
+          "w": 720,
+          "h": 400
+        }
+      },
+      {
+        "item": "viz_per_source",
+        "type": "block",
+        "position": {
+          "x": 720,
+          "y": 90,
+          "w": 720,
+          "h": 400
         }
       },
       {
@@ -225,19 +248,19 @@
         "type": "block",
         "position": {
           "x": 0,
-          "y": 600,
-          "w": 1440,
-          "h": 350
+          "y": 490,
+          "w": 480,
+          "h": 260
         }
       },
       {
-        "item": "viz_per_source",
+        "item": "viz_trend",
         "type": "block",
         "position": {
-          "x": 0,
-          "y": 950,
-          "w": 1440,
-          "h": 500
+          "x": 480,
+          "y": 490,
+          "w": 960,
+          "h": 260
         }
       },
       {
@@ -245,19 +268,9 @@
         "type": "block",
         "position": {
           "x": 0,
-          "y": 1450,
+          "y": 750,
           "w": 1440,
-          "h": 500
-        }
-      },
-      {
-        "item": "viz_trend",
-        "type": "block",
-        "position": {
-          "x": 0,
-          "y": 1950,
-          "w": 1440,
-          "h": 450
+          "h": 320
         }
       }
     ]
