@@ -4,7 +4,7 @@ Checks I run when a data source goes quiet or something looks off.
 
 | Script | Use when |
 | --- | --- |
-| [`splunk-health-searches.md`](splunk-health-searches.md) | Start here: find which host or source went quiet |
+| [`splunk-health-searches.md`](splunk-health-searches.md) | Start here: find which host or source went quiet; also license, baseline and webhook checks |
 | [`check-syslog-collector.sh`](check-syslog-collector.sh) | A syslog source (UDR, switch, Proxmox) stops showing up in `index=network` |
 | [`Test-SocEndpoint.ps1`](Test-SocEndpoint.ps1) | A Windows endpoint stops sending Sysmon, event logs or Wazuh alerts |
 | [`check-wazuh-manager.sh`](check-wazuh-manager.sh) | `index=wazuh` goes quiet or an agent won't enroll |
@@ -13,3 +13,8 @@ Checks I run when a data source goes quiet or something looks off.
 | [`test-nids-pipeline.sh`](test-nids-pipeline.sh) | Proving Suricata detection end to end after any sensor change |
 | [`check-misp.sh`](check-misp.sh) | The MISP web UI errors (HTTP 500), feeds stop updating, or after rotating a secret |
 | [`test-misp-api.sh`](test-misp-api.sh) | misp42splunk searches fail or the API key changed |
+| [`check-thehive.sh`](check-thehive.sh) | TheHive won't start, the UI errors, or Shuffle's alerts stop arriving |
+| [`check-shuffle.sh`](check-shuffle.sh) | Runs hang at "No results yet", memory runs low, or a run needs tracing (`--execution`) |
+| [`test-enrichment-apis.sh`](test-enrichment-apis.sh) | An enrichment line in TheHive is blank or a key was rotated |
+| [`test-shuffle-webhook.sh`](test-shuffle-webhook.sh) | Testing a workflow without waiting for a Splunk alert |
+| [`check-velociraptor.sh`](check-velociraptor.sh) | Clients go offline, the GUI won't load, or auditing copies of the CA key |

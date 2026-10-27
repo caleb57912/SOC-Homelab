@@ -24,67 +24,60 @@
     }
   },
   "dataSources": {
-    "ds_base": {
-      "type": "ds.search",
-      "name": "base",
-      "options": {
-        "query": "index=baseline source=baseline_daily\n| rename orig_index as src_index, orig_sourcetype as src_sourcetype, orig_source as src_source, orig_host as src_host\n| dedup day src_index src_sourcetype src_source src_host\n| eval label=src_index.\" · \".if(src_index=\"os\",replace(src_source,\"^XmlWinEventLog:\",\"\"),src_sourcetype).\" · \".src_host\n| table _time day src_index label events active_hours\n| rename src_index as index"
-      }
-    },
     "ds_days": {
-      "type": "ds.chain",
+      "type": "ds.search",
+      "name": "days",
       "options": {
-        "extend": "ds_base",
-        "query": "| stats dc(day) as days"
+        "query": "index=baseline source=baseline_daily\n| rename orig_index as src_index, orig_sourcetype as src_sourcetype, orig_source as src_source, orig_host as src_host\n| dedup day src_index src_sourcetype src_source src_host\n| eval label=src_index.\" · \".if(src_index=\"os\",replace(src_source,\"^XmlWinEventLog:\",\"\"),src_sourcetype).\" · \".src_host\n| table _time day src_index label events active_hours\n| rename src_index as index\n| stats dc(day) as days"
       }
     },
     "ds_sources": {
-      "type": "ds.chain",
+      "type": "ds.search",
+      "name": "sources",
       "options": {
-        "extend": "ds_base",
-        "query": "| eventstats max(day) as last | where day=last | stats dc(label) as sources"
+        "query": "index=baseline source=baseline_daily\n| rename orig_index as src_index, orig_sourcetype as src_sourcetype, orig_source as src_source, orig_host as src_host\n| dedup day src_index src_sourcetype src_source src_host\n| eval label=src_index.\" · \".if(src_index=\"os\",replace(src_source,\"^XmlWinEventLog:\",\"\"),src_sourcetype).\" · \".src_host\n| table _time day src_index label events active_hours\n| rename src_index as index\n| eventstats max(day) as last | where day=last | stats dc(label) as sources"
       }
     },
     "ds_events": {
-      "type": "ds.chain",
+      "type": "ds.search",
+      "name": "events",
       "options": {
-        "extend": "ds_base",
-        "query": "| eventstats max(day) as last | where day=last | stats sum(events) as events"
+        "query": "index=baseline source=baseline_daily\n| rename orig_index as src_index, orig_sourcetype as src_sourcetype, orig_source as src_source, orig_host as src_host\n| dedup day src_index src_sourcetype src_source src_host\n| eval label=src_index.\" · \".if(src_index=\"os\",replace(src_source,\"^XmlWinEventLog:\",\"\"),src_sourcetype).\" · \".src_host\n| table _time day src_index label events active_hours\n| rename src_index as index\n| eventstats max(day) as last | where day=last | stats sum(events) as events"
       }
     },
     "ds_by_index": {
-      "type": "ds.chain",
+      "type": "ds.search",
+      "name": "by_index",
       "options": {
-        "extend": "ds_base",
-        "query": "| chart sum(events) over day by index"
+        "query": "index=baseline source=baseline_daily\n| rename orig_index as src_index, orig_sourcetype as src_sourcetype, orig_source as src_source, orig_host as src_host\n| dedup day src_index src_sourcetype src_source src_host\n| eval label=src_index.\" · \".if(src_index=\"os\",replace(src_source,\"^XmlWinEventLog:\",\"\"),src_sourcetype).\" · \".src_host\n| table _time day src_index label events active_hours\n| rename src_index as index\n| chart sum(events) over day by index"
       }
     },
     "ds_per_source": {
-      "type": "ds.chain",
+      "type": "ds.search",
+      "name": "per_source",
       "options": {
-        "extend": "ds_base",
-        "query": "| eventstats max(day) as last\n| stats dc(day) as days avg(events) as avg_events min(events) as min_events max(events) as max_events avg(active_hours) as avg_hours sum(eval(if(day=last,events,0))) as last_day by index label\n| eval change_pct=round((last_day-avg_events)/avg_events*100,0), avg_events=round(avg_events,0), avg_hours=round(avg_hours,1)\n| sort index -avg_events"
+        "query": "index=baseline source=baseline_daily\n| rename orig_index as src_index, orig_sourcetype as src_sourcetype, orig_source as src_source, orig_host as src_host\n| dedup day src_index src_sourcetype src_source src_host\n| eval label=src_index.\" · \".if(src_index=\"os\",replace(src_source,\"^XmlWinEventLog:\",\"\"),src_sourcetype).\" · \".src_host\n| table _time day src_index label events active_hours\n| rename src_index as index\n| eventstats max(day) as last\n| stats dc(day) as days avg(events) as avg_events min(events) as min_events max(events) as max_events avg(active_hours) as avg_hours sum(eval(if(day=last,events,0))) as last_day by index label\n| eval change_pct=round((last_day-avg_events)/avg_events*100,0), avg_events=round(avg_events,0), avg_hours=round(avg_hours,1)\n| sort index -avg_events"
       }
     },
     "ds_hours": {
-      "type": "ds.chain",
+      "type": "ds.search",
+      "name": "hours",
       "options": {
-        "extend": "ds_base",
-        "query": "| chart max(active_hours) over label by day limit=0"
+        "query": "index=baseline source=baseline_daily\n| rename orig_index as src_index, orig_sourcetype as src_sourcetype, orig_source as src_source, orig_host as src_host\n| dedup day src_index src_sourcetype src_source src_host\n| eval label=src_index.\" · \".if(src_index=\"os\",replace(src_source,\"^XmlWinEventLog:\",\"\"),src_sourcetype).\" · \".src_host\n| table _time day src_index label events active_hours\n| rename src_index as index\n| chart max(active_hours) over label by day limit=0"
       }
     },
     "ds_trend": {
-      "type": "ds.chain",
+      "type": "ds.search",
+      "name": "trend",
       "options": {
-        "extend": "ds_base",
-        "query": "| chart sum(events) over day by label limit=0"
+        "query": "index=baseline source=baseline_daily\n| rename orig_index as src_index, orig_sourcetype as src_sourcetype, orig_source as src_source, orig_host as src_host\n| dedup day src_index src_sourcetype src_source src_host\n| eval label=src_index.\" · \".if(src_index=\"os\",replace(src_source,\"^XmlWinEventLog:\",\"\"),src_sourcetype).\" · \".src_host\n| table _time day src_index label events active_hours\n| rename src_index as index\n| chart sum(events) over day by label limit=0"
       }
     },
     "ds_silence": {
       "type": "ds.search",
       "name": "silence",
       "options": {
-        "query": "index=baseline source=baseline_daily earliest=-15d@d latest=@d\n| dedup day orig_index orig_sourcetype orig_source orig_host\n| stats dc(day) as days_seen avg(active_hours) as avg_hours by orig_index orig_sourcetype orig_source orig_host\n| rename orig_index as index, orig_sourcetype as sourcetype, orig_source as source, orig_host as host\n| where days_seen>=2\n| append [| tstats latest(_time) as last_seen where index=* NOT index=baseline earliest=-4d by index sourcetype source host]\n| stats max(days_seen) as days_seen max(avg_hours) as avg_hours max(last_seen) as last_seen by index sourcetype source host\n| where isnotnull(days_seen)\n| eval threshold_h=case(avg_hours>=20,2, avg_hours>=8,26, true(),74)\n| eval silent_h=round((now()-coalesce(last_seen,relative_time(now(),\"-4d\")))/3600,1)\n| eval status=if(silent_h>threshold_h,\"SILENT\",\"ok\"), avg_hours=round(avg_hours,1), last_seen=if(isnull(last_seen),\"none in 4 days\",strftime(last_seen,\"%F %T\"))\n| eval source=replace(replace(source,\"^XmlWinEventLog:(Microsoft-Windows-)?\",\"\"),\"^.*/\",\"\")\n| sort - status index sourcetype\n| table status index sourcetype source host days_seen avg_hours threshold_h silent_h last_seen",
+        "query": "index=baseline source=baseline_daily earliest=-15d@d latest=@d\n| dedup day orig_index orig_sourcetype orig_source orig_host\n| stats dc(day) as days_seen avg(active_hours) as avg_hours by orig_index orig_sourcetype orig_source orig_host\n| rename orig_index as index, orig_sourcetype as sourcetype, orig_source as source, orig_host as host\n| where days_seen>=2\n| append [| tstats latest(_time) as last_seen where index=* NOT index=baseline earliest=-4d by index sourcetype source host]\n| stats max(days_seen) as days_seen max(avg_hours) as avg_hours max(last_seen) as last_seen by index sourcetype source host\n| where isnotnull(days_seen)\n| eval threshold_h=case(avg_hours>=20,2, avg_hours>=8,26, true(),74)\n| eval silent_h=round((now()-coalesce(last_seen,relative_time(now(),\"-4d\")))/3600,1)\n| eval status=if(silent_h>threshold_h,\"SILENT\",\"ok\"), avg_hours=round(avg_hours,1), last_seen=if(isnull(last_seen),\"none in 4 days\",strftime(last_seen,\"%F %T\"))\n| eval source=replace(replace(source,\"^XmlWinEventLog:(Microsoft-Windows-)?\",\"\"),\"^.*/\",\"\")\n| sort - status index sourcetype\n| table status sourcetype source host threshold_h silent_h last_seen",
         "queryParameters": {
           "earliest": "-15d@d",
           "latest": "now"
@@ -100,7 +93,7 @@
         "primary": "ds_days"
       },
       "options": {
-        "majorFontSize": 34
+        "majorFontSize": 28
       }
     },
     "viz_sources": {
@@ -110,7 +103,7 @@
         "primary": "ds_sources"
       },
       "options": {
-        "majorFontSize": 34
+        "majorFontSize": 28
       }
     },
     "viz_events": {
@@ -120,7 +113,7 @@
         "primary": "ds_events"
       },
       "options": {
-        "majorFontSize": 34
+        "majorFontSize": 28
       }
     },
     "viz_by_index": {
@@ -200,7 +193,7 @@
           "x": 0,
           "y": 0,
           "w": 480,
-          "h": 90
+          "h": 150
         }
       },
       {
@@ -210,7 +203,7 @@
           "x": 480,
           "y": 0,
           "w": 480,
-          "h": 90
+          "h": 150
         }
       },
       {
@@ -220,7 +213,7 @@
           "x": 960,
           "y": 0,
           "w": 480,
-          "h": 90
+          "h": 150
         }
       },
       {
@@ -228,7 +221,7 @@
         "type": "block",
         "position": {
           "x": 0,
-          "y": 90,
+          "y": 150,
           "w": 720,
           "h": 400
         }
@@ -238,7 +231,7 @@
         "type": "block",
         "position": {
           "x": 720,
-          "y": 90,
+          "y": 150,
           "w": 720,
           "h": 400
         }
@@ -248,7 +241,7 @@
         "type": "block",
         "position": {
           "x": 0,
-          "y": 490,
+          "y": 550,
           "w": 480,
           "h": 260
         }
@@ -258,7 +251,7 @@
         "type": "block",
         "position": {
           "x": 480,
-          "y": 490,
+          "y": 550,
           "w": 960,
           "h": 260
         }
@@ -268,7 +261,7 @@
         "type": "block",
         "position": {
           "x": 0,
-          "y": 750,
+          "y": 810,
           "w": 1440,
           "h": 320
         }

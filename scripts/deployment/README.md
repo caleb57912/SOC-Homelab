@@ -21,4 +21,9 @@ Scripts that onboard a system into the SOC.
 | [`linux/configure-sensor-ingest.sh`](linux/configure-sensor-ingest.sh) | splunk01: indexes, parsing, alert-only filter, deployment app for the sensor |
 | [`linux/install-misp.sh`](linux/install-misp.sh) | misp01: MISP install and tuning |
 | [`linux/set-misp-redis-password.sh`](linux/set-misp-redis-password.sh) | misp01: Redis password rotation across every consumer |
+| [`linux/install-thehive.sh`](linux/install-thehive.sh) | thehive01: Java, Cassandra, Elasticsearch, TheHive |
+| [`linux/install-shuffle.sh`](linux/install-shuffle.sh) | shuffle01: Docker and a pinned, locked-down Shuffle |
+| [`linux/install-velociraptor-server.sh`](linux/install-velociraptor-server.sh) | velo01: verified Velociraptor server as a systemd package |
+| [`linux/build-velociraptor-msi.sh`](linux/build-velociraptor-msi.sh) | velo01: verified, repacked Windows client MSI |
 | [`windows/Install-SocEndpoint.ps1`](windows/Install-SocEndpoint.ps1) | Windows endpoints: Sysmon, script block logging, logon auditing, Splunk UF, Wazuh agent |
+| [`windows/Install-VelociraptorClient.ps1`](windows/Install-VelociraptorClient.ps1) | Windows endpoints: Velociraptor client, hash-checked |

@@ -108,3 +108,69 @@ index=_internal source=*license_usage.log* type=Usage earliest=-7d@d | timechart
 index=_internal source=*license_usage.log* type=Usage earliest=-1d@d | stats sum(b) as bytes by idx | eval MB=round(bytes/1048576,1) | sort - MB
 ```
 
+
+License usage per index per day, one column per index:
+
+```
+index=_internal source=*license_usage.log* type=Usage earliest=-7d@d | eval day=strftime(_time,"%Y-%m-%d") | stats sum(b) as bytes by day idx | eval MB=round(bytes/1048576,1) | xyseries day idx MB | addtotals fieldname=total_MB
+```
+
+## Which license is active
+
+```
+| rest /services/licenser/licenses splunk_server=local | eval expires=strftime(expiration_time,"%Y-%m-%d") | table label type status quota expires
+```
+
+```
+| rest /services/licenser/groups splunk_server=local | table title is_active
+```
+
+`Enterprise` must be 1. If `Free` is active, scheduled searches and alerts stop without any error, which would break the baseline and the Shuffle webhook.
+
+## Baseline: one copy of each day
+
+Time picker **All time**, not "All time (real-time)": a real-time search only sees events arriving from now on and returns nothing for rows already written.
+
+```
+index=baseline source=baseline_daily | stats count as rows sum(events) as events by day
+```
+
+Each day should have about the same number of rows (24 at the start). Double or triple the rows means the day was collected more than once.
+
+## Baseline: how many times a collect ran
+
+Time picker **Last 7 days**. Every run of a search ending in `collect` appends another copy of the day, and Splunk Web reruns the search bar on a time-picker change or a page reload.
+
+```
+index=_audit action=search info=completed search="*collect index=baseline*" | table _time user search_id total_run_time | sort _time
+```
+
+Scheduled runs show `user` as the report owner shortly after 00:15 UTC. Anything else was a hand run.
+
+## Baseline: the report's schedule
+
+```
+| rest /servicesNS/-/-/saved/searches splunk_server=local | search title="SOC - Baseline*" | table title eai:acl.app eai:acl.owner eai:acl.sharing cron_schedule is_scheduled next_scheduled_time
+```
+
+`/servicesNS/-/-/` lists every owner in every app. The Settings → Searches, reports, and alerts page is filtered by app and owner and can hide a report that exists.
+
+## An index exists and is receiving
+
+```
+| rest /services/data/indexes splunk_server=local | search title=baseline | table title homePath currentDBSizeMB totalEventCount
+```
+
+An index added from the CLI needs a Splunk restart before it takes data.
+
+## Shuffle webhook deliveries from alerts
+
+```
+index=_internal sourcetype=splunkd component=sendmodalert action=webhook | table _time log_level event_message
+```
+
+Look for `Webhook receiver responded with HTTP status=200`. The alert form rejects `http://` webhook URLs, so use Shuffle's HTTPS port (3443). To rule out the allow list, on splunk01:
+
+```bash
+sudo -u splunk /opt/splunk/bin/splunk btool alert_actions list webhook --debug | grep -iE "allowlist|enable"
+```

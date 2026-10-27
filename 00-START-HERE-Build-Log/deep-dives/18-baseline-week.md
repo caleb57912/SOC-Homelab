@@ -122,7 +122,7 @@ I built the dashboard `SOC - Baseline week` in Dashboard Studio (grid layout, sh
 | Active hours per source per day | Which sources report around the clock and which in bursts |
 | Daily events per source | Log scale, so small sources stay visible next to `zeek:conn` |
 
-One base search feeds every panel except the silence check, which has its own:
+Every panel except the silence check starts with the same search and adds its own `stats` or `chart`:
 
 ```
 index=baseline source=baseline_daily
@@ -133,7 +133,7 @@ index=baseline source=baseline_daily
 | rename src_index as index
 ```
 
-`dedup` keeps one row per source per day even if a day is ever written twice.
+`dedup` keeps one row per source per day even if a day is ever written twice. I first ran it once as a base search with chained panels; after layout edits two chained tables showed "Unknown sid" while the tiles kept a pre-backfill result, so each panel now runs its own search. At 71 rows this costs nothing.
 
 ### Issue: every row looked like `baseline · stash · splunk01`
 
