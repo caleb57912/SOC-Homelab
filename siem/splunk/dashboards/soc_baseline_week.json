@@ -1,0 +1,265 @@
+{
+  "title": "SOC - Baseline week",
+  "description": "Daily event volume and active hours per log source, from index=baseline",
+  "inputs": {
+    "input_t": {
+      "type": "input.timerange",
+      "title": "Days",
+      "options": {
+        "token": "t",
+        "defaultValue": "-14d@d,now"
+      }
+    }
+  },
+  "defaults": {
+    "dataSources": {
+      "ds.search": {
+        "options": {
+          "queryParameters": {
+            "earliest": "$t.earliest$",
+            "latest": "$t.latest$"
+          }
+        }
+      }
+    }
+  },
+  "dataSources": {
+    "ds_base": {
+      "type": "ds.search",
+      "name": "base",
+      "options": {
+        "query": "index=baseline source=baseline_daily\n| rename orig_index as src_index, orig_sourcetype as src_sourcetype, orig_source as src_source, orig_host as src_host\n| dedup day src_index src_sourcetype src_source src_host\n| eval label=src_index.\" · \".if(src_index=\"os\",replace(src_source,\"^XmlWinEventLog:\",\"\"),src_sourcetype).\" · \".src_host\n| table _time day src_index label events active_hours\n| rename src_index as index"
+      }
+    },
+    "ds_days": {
+      "type": "ds.chain",
+      "options": {
+        "extend": "ds_base",
+        "query": "| stats dc(day) as days"
+      }
+    },
+    "ds_sources": {
+      "type": "ds.chain",
+      "options": {
+        "extend": "ds_base",
+        "query": "| eventstats max(day) as last | where day=last | stats dc(label) as sources"
+      }
+    },
+    "ds_events": {
+      "type": "ds.chain",
+      "options": {
+        "extend": "ds_base",
+        "query": "| eventstats max(day) as last | where day=last | stats sum(events) as events"
+      }
+    },
+    "ds_by_index": {
+      "type": "ds.chain",
+      "options": {
+        "extend": "ds_base",
+        "query": "| chart sum(events) over day by index"
+      }
+    },
+    "ds_per_source": {
+      "type": "ds.chain",
+      "options": {
+        "extend": "ds_base",
+        "query": "| eventstats max(day) as last\n| stats dc(day) as days avg(events) as avg_events min(events) as min_events max(events) as max_events avg(active_hours) as avg_hours sum(eval(if(day=last,events,0))) as last_day by index label\n| eval change_pct=round((last_day-avg_events)/avg_events*100,0), avg_events=round(avg_events,0), avg_hours=round(avg_hours,1)\n| sort index -avg_events"
+      }
+    },
+    "ds_hours": {
+      "type": "ds.chain",
+      "options": {
+        "extend": "ds_base",
+        "query": "| chart max(active_hours) over label by day limit=0"
+      }
+    },
+    "ds_trend": {
+      "type": "ds.chain",
+      "options": {
+        "extend": "ds_base",
+        "query": "| chart sum(events) over day by label limit=0"
+      }
+    },
+    "ds_silence": {
+      "type": "ds.search",
+      "name": "silence",
+      "options": {
+        "query": "index=baseline source=baseline_daily earliest=-15d@d latest=@d\n| dedup day orig_index orig_sourcetype orig_source orig_host\n| stats dc(day) as days_seen avg(active_hours) as avg_hours by orig_index orig_sourcetype orig_source orig_host\n| rename orig_index as index, orig_sourcetype as sourcetype, orig_source as source, orig_host as host\n| where days_seen>=2\n| append [| tstats latest(_time) as last_seen where index=* NOT index=baseline earliest=-4d by index sourcetype source host]\n| stats max(days_seen) as days_seen max(avg_hours) as avg_hours max(last_seen) as last_seen by index sourcetype source host\n| where isnotnull(days_seen)\n| eval threshold_h=case(avg_hours>=20,2, avg_hours>=8,26, true(),74)\n| eval silent_h=round((now()-coalesce(last_seen,relative_time(now(),\"-4d\")))/3600,1)\n| eval status=if(silent_h>threshold_h,\"SILENT\",\"ok\"), avg_hours=round(avg_hours,1), last_seen=if(isnull(last_seen),\"none in 4 days\",strftime(last_seen,\"%F %T\"))\n| sort - status index sourcetype\n| table status index sourcetype source host days_seen avg_hours threshold_h silent_h last_seen",
+        "queryParameters": {
+          "earliest": "-15d@d",
+          "latest": "now"
+        }
+      }
+    }
+  },
+  "visualizations": {
+    "viz_days": {
+      "type": "splunk.singlevalue",
+      "title": "Days recorded",
+      "dataSources": {
+        "primary": "ds_days"
+      }
+    },
+    "viz_sources": {
+      "type": "splunk.singlevalue",
+      "title": "Sources on the last day",
+      "dataSources": {
+        "primary": "ds_sources"
+      }
+    },
+    "viz_events": {
+      "type": "splunk.singlevalue",
+      "title": "Events on the last day",
+      "dataSources": {
+        "primary": "ds_events"
+      }
+    },
+    "viz_by_index": {
+      "type": "splunk.column",
+      "title": "Daily events per index",
+      "dataSources": {
+        "primary": "ds_by_index"
+      },
+      "options": {
+        "stackMode": "stacked",
+        "xAxisTitleText": "Day (UTC)",
+        "yAxisTitleText": "Events"
+      }
+    },
+    "viz_per_source": {
+      "type": "splunk.table",
+      "title": "Per source: daily volume and active hours",
+      "dataSources": {
+        "primary": "ds_per_source"
+      },
+      "options": {
+        "count": 50
+      }
+    },
+    "viz_hours": {
+      "type": "splunk.table",
+      "title": "Active hours per source per day (of 24)",
+      "dataSources": {
+        "primary": "ds_hours"
+      },
+      "options": {
+        "count": 50
+      }
+    },
+    "viz_trend": {
+      "type": "splunk.line",
+      "title": "Daily events per source (log scale)",
+      "dataSources": {
+        "primary": "ds_trend"
+      },
+      "options": {
+        "yAxisScale": "log",
+        "xAxisTitleText": "Day (UTC)",
+        "yAxisTitleText": "Events",
+        "legendDisplay": "right"
+      }
+    },
+    "viz_silence": {
+      "type": "splunk.table",
+      "title": "Expected sources: silence check (same logic as the alert)",
+      "dataSources": {
+        "primary": "ds_silence"
+      },
+      "options": {
+        "count": 50
+      }
+    }
+  },
+  "layout": {
+    "type": "grid",
+    "globalInputs": [
+      "input_t"
+    ],
+    "options": {
+      "width": 1440,
+      "height": 960
+    },
+    "structure": [
+      {
+        "item": "viz_days",
+        "type": "block",
+        "position": {
+          "x": 0,
+          "y": 0,
+          "w": 480,
+          "h": 150
+        }
+      },
+      {
+        "item": "viz_sources",
+        "type": "block",
+        "position": {
+          "x": 480,
+          "y": 0,
+          "w": 480,
+          "h": 150
+        }
+      },
+      {
+        "item": "viz_events",
+        "type": "block",
+        "position": {
+          "x": 960,
+          "y": 0,
+          "w": 480,
+          "h": 150
+        }
+      },
+      {
+        "item": "viz_silence",
+        "type": "block",
+        "position": {
+          "x": 0,
+          "y": 150,
+          "w": 1440,
+          "h": 450
+        }
+      },
+      {
+        "item": "viz_by_index",
+        "type": "block",
+        "position": {
+          "x": 0,
+          "y": 600,
+          "w": 1440,
+          "h": 350
+        }
+      },
+      {
+        "item": "viz_per_source",
+        "type": "block",
+        "position": {
+          "x": 0,
+          "y": 950,
+          "w": 1440,
+          "h": 500
+        }
+      },
+      {
+        "item": "viz_hours",
+        "type": "block",
+        "position": {
+          "x": 0,
+          "y": 1450,
+          "w": 1440,
+          "h": 500
+        }
+      },
+      {
+        "item": "viz_trend",
+        "type": "block",
+        "position": {
+          "x": 0,
+          "y": 1950,
+          "w": 1440,
+          "h": 450
+        }
+      }
+    ]
+  }
+}
