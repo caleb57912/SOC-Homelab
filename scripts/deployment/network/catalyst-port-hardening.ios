@@ -1,0 +1,28 @@
+reload in 10
+configure terminal
+interface GigabitEthernet1/0/4
+ description Admin PC
+ switchport mode access
+ switchport access vlan 1
+ switchport nonegotiate
+ spanning-tree portfast edge
+ spanning-tree bpduguard enable
+ no shutdown
+exit
+interface GigabitEthernet1/0/2
+ description UNUSED
+ switchport mode access
+ switchport nonegotiate
+ shutdown
+exit
+interface range GigabitEthernet1/1/1 - 4
+ description UNUSED
+ shutdown
+exit
+interface range TenGigabitEthernet1/1/1 - 2
+ description UNUSED
+ shutdown
+exit
+end
+show interfaces status
+show interfaces GigabitEthernet1/0/4 switchport | include Mode|Negotiation

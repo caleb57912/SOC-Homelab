@@ -1,0 +1,19 @@
+configure terminal
+clock timezone UTC 0 0
+ntp server 162.159.200.1
+service timestamps log datetime msec show-timezone
+logging host 10.30.0.10
+logging trap informational
+logging source-interface Vlan1
+logging origin-id hostname
+login on-failure log
+login on-success log
+archive
+ log config
+  logging enable
+  notify syslog contenttype plaintext
+  hidekeys
+end
+write memory
+show logging | include Logging to|Trap
+show ntp status

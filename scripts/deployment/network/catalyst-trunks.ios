@@ -1,0 +1,30 @@
+reload in 10
+configure terminal
+interface GigabitEthernet1/0/3
+ description UNUSED - was loop to UDR port 2
+ shutdown
+exit
+vtp mode transparent
+vlan 30
+ name SOC
+exit
+interface GigabitEthernet1/0/5
+ description Trunk to pve - native Main + SOC
+ switchport trunk encapsulation dot1q
+ switchport trunk native vlan 1
+ switchport trunk allowed vlan 1,30
+ switchport mode trunk
+ switchport nonegotiate
+exit
+interface GigabitEthernet1/0/1
+ description Trunk to UDR - native Main + SOC
+ switchport trunk encapsulation dot1q
+ switchport trunk native vlan 1
+ switchport trunk allowed vlan 1,30
+ switchport mode trunk
+ switchport nonegotiate
+exit
+no ip routing
+end
+show interfaces trunk
+show interfaces status
