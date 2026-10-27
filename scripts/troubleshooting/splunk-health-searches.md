@@ -49,3 +49,62 @@ index=wazuh data.sca.type=summary
 | dedup agent.name data.sca.policy
 | table _time agent.name data.sca.policy data.sca.score data.sca.passed data.sca.failed
 ```
+
+## Sensor: Zeek logs by type
+
+```
+index=zeek earliest=-1h | stats count by sourcetype
+```
+
+`zeek:conn` should be the largest. A missing sourcetype that used to appear means the forwarder lost read access or the log isn't being written. Run `check-sensor.sh`.
+
+## Sensor: only alerts reach index=suricata
+
+```
+index=suricata _index_earliest=-1h | stats count by event_type
+```
+
+Anything other than `alert` means the nullQueue filter in TA-soc-homelab isn't applied (parse-time change without a Splunk restart).
+
+## Sensor: test alert
+
+```
+index=suricata alert.signature_id=9000001 earliest=-15m | table _time src_ip dest_ip alert.signature vlan{}
+```
+
+Run `test-nids-pipeline.sh` on sensor01 first.
+
+## Sensor: indexing lag on new data
+
+```
+index=zeek OR index=suricata earliest=-15m | eval lag=_indextime-_time | stats count avg(lag) as avg_lag max(lag) as max_lag by index sourcetype
+```
+
+`suricata:eve` should be seconds. `zeek:conn` and `zeek:ssl` run higher because Zeek writes a record when the connection ends but stamps it with the start time. Negative lag means a timestamp parsing problem.
+
+## Sensor: top Suricata signatures
+
+```
+index=suricata earliest=-24h | stats count by alert.signature_id alert.signature | sort - count | head 20
+```
+
+## MISP lookup rebuild runs
+
+```
+index=_internal sourcetype=scheduler savedsearch_name="MISP - Build DNS IOC lookup" | table _time status result_count run_time
+```
+
+```
+| inputlookup misp_dns_iocs.csv | stats count
+```
+
+## License usage per day
+
+```
+index=_internal source=*license_usage.log* type=Usage earliest=-7d@d | timechart span=1d sum(b) as bytes | eval MB=round(bytes/1048576,1) | fields _time MB
+```
+
+```
+index=_internal source=*license_usage.log* type=Usage earliest=-1d@d | stats sum(b) as bytes by idx | eval MB=round(bytes/1048576,1) | sort - MB
+```
+

@@ -1,0 +1,17 @@
+reload in 10
+configure terminal
+interface GigabitEthernet1/0/24
+ description SPAN destination to pve eno2 (sensor01)
+ no shutdown
+exit
+no monitor session 1
+monitor session 1 source interface GigabitEthernet1/0/1 both
+monitor session 1 source interface GigabitEthernet1/0/4 both
+monitor session 1 destination interface GigabitEthernet1/0/24 encapsulation replicate
+interface range GigabitEthernet1/0/1 , GigabitEthernet1/0/4
+ no cdp enable
+exit
+end
+show monitor session 1
+show running-config interface GigabitEthernet1/0/1 | include cdp
+show running-config interface GigabitEthernet1/0/4 | include cdp
