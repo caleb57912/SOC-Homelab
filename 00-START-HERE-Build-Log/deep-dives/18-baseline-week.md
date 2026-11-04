@@ -445,6 +445,10 @@ After the threshold change the Source view refused the definition: "Expected ','
 
 ![The final dashboard.](../../screenshots/build-log/18-baseline-week/35-dashboard-final.png)
 
+**The alert with the 15-day lookback and the Catalyst override, read back over REST.**
+
+![The alert with the 15-day lookback and the Catalyst override, read back over REST.](../../screenshots/build-log/18-baseline-week/36-alert-15-day-lookback.png)
+
 ## Backlog
 
 - Make the daily search safe to rerun, for example by skipping a day that already exists in `baseline`
