@@ -126,7 +126,7 @@ flowchart LR
         e3["Velociraptor client<br/>event monitoring"]
         e4["Shuffle worker tuning,<br/>pin remaining images"]
         e5["Baseline search<br/>safe to rerun"]
-        e6["Catalyst syslog override;<br/>volume checks on stable sources"]
+        e6["Volume checks on<br/>stable sources"]
         e7["misp-modules<br/>if RAM allows"]
         e1 --> e2 --> e3 --> e4 --> e5 --> e6 --> e7
     end

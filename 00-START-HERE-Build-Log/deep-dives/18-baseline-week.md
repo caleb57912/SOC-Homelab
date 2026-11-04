@@ -141,7 +141,7 @@ The first version grouped by `index`, `sourcetype`, `source` and `host` and show
 
 ## Silence alert
 
-`tstats` returns no row for a source that sent nothing, so a silent source can't be found by looking for zeros. The alert builds the list of expected sources from `baseline` and compares it with each source's latest event over the last four days.
+`tstats` returns no row for a source that sent nothing, so a silent source can't be found by looking for zeros. The alert builds the list of expected sources from `baseline` and compares it with each source's latest event over the last 15 days.
 
 ```
 index=baseline source=baseline_daily earliest=-15d@d latest=@d
@@ -149,13 +149,13 @@ index=baseline source=baseline_daily earliest=-15d@d latest=@d
 | stats dc(day) as days_seen avg(active_hours) as avg_hours by orig_index orig_sourcetype orig_source orig_host
 | rename orig_index as index, orig_sourcetype as sourcetype, orig_source as source, orig_host as host
 | where days_seen>=2
-| append [| tstats latest(_time) as last_seen where index=* NOT index=baseline earliest=-4d by index sourcetype source host]
+| append [| tstats latest(_time) as last_seen where index=* NOT index=baseline earliest=-15d by index sourcetype source host]
 | stats max(days_seen) as days_seen max(avg_hours) as avg_hours max(last_seen) as last_seen by index sourcetype source host
 | where isnotnull(days_seen)
-| eval threshold_h=case(sourcetype="zeek:ssh",168, avg_hours>=23,3, avg_hours>=20,8, avg_hours>=8,26, true(),74)
-| eval silent_h=round((now()-coalesce(last_seen,relative_time(now(),"-4d")))/3600,1)
+| eval threshold_h=case(sourcetype="zeek:ssh",168, host="192.168.1.213",336, avg_hours>=23,3, avg_hours>=20,8, avg_hours>=8,26, true(),74)
+| eval silent_h=round((now()-coalesce(last_seen,relative_time(now(),"-15d")))/3600,1)
 | where silent_h>threshold_h
-| eval avg_hours=round(avg_hours,1), last_seen=if(isnull(last_seen),"none in 4 days",strftime(last_seen,"%F %T"))
+| eval avg_hours=round(avg_hours,1), last_seen=if(isnull(last_seen),"none in 15 days",strftime(last_seen,"%F %T"))
 | table index sourcetype source host days_seen avg_hours threshold_h silent_h last_seen
 ```
 
@@ -164,13 +164,14 @@ The thresholds below are the tuned ones from [the recorded week](#threshold-tuni
 | Average active hours per day | Example sources | Silent longer than |
 | --- | --- | --- |
 | `zeek:ssh` (override) | Written only when an SSH session crosses the SPAN | 168 h |
+| Catalyst syslog (override, `host="192.168.1.213"`) | Logs only on logins and config changes | 336 h |
 | 23 or more | Pi-hole, UDR and Proxmox syslog, Sysmon, Security, Application, Suricata, Wazuh, Zeek conn/dns/ssl/http/files/notice | 3 h |
 | 20 to 22 | `zeek:weird`, `zeek:x509` | 8 h |
 | 8 to 19 | System, `zeek:software`, `zeek:known_services` | 26 h |
 | Under 8 | PowerShell, `zeek:dhcp`, `zeek:known_hosts`, `zeek:ssh` | 74 h |
 | Seen on fewer than 2 days | Catalyst syslog, `intel` | Not expected yet |
 
-A source that stops entirely shows `none in 4 days` because the `coalesce` counts it as silent since the start of the window.
+A source that stops entirely shows `none in 15 days` because the `coalesce` counts it as silent since the start of the window.
 
 Saved as the alert `SOC - Baseline silent log source` (search app, shared in app): cron `20 * * * *`, trigger when the number of results is greater than 0, once per result, throttled 12 hours on `index,sourcetype,source,host`, action Add to Triggered Alerts, severity Medium. The configuration is in [`siem/splunk/saved-searches/soc_baseline_silent_log_source.conf`](../../siem/splunk/saved-searches/soc_baseline_silent_log_source.conf).
 
@@ -289,6 +290,10 @@ The alert did its job: a source that had always reported stopped, and it said so
 | Under 8 | 74 h | 74 h | Longest gap 15 h |
 
 I changed the threshold line through Edit Search and read it back over REST: `| rest /servicesNS/-/-/saved/searches splunk_server=local | search title="SOC - Baseline silent log source" | table search description`. The override comes first because `case()` returns the value of the first condition that matches; after the hour tiers, `zeek:ssh` (about 2 active hours a day) would fall through to 74 h.
+
+### Issue: the 168-hour override could never fire
+
+Before adding a Catalyst override I checked the longest silence the search can measure. `tstats` only looked back 4 days, and a source with no events in that window got `coalesce(last_seen, now-4d)`, so `silent_h` topped out at 96 hours. Any threshold above 96, including the 168 h for `zeek:ssh`, could never be crossed. I widened the `tstats` window and the `coalesce` default to 15 days, matching the expected-source window, so thresholds up to 360 hours work. Catalyst syslog then got its own override of 336 h (two weeks) ahead of the hour tiers, because the switch only logs on logins and config changes and would otherwise become expected at 74 h once it logged on a second day.
 
 ### Issue: silent sources sorted to the bottom
 
@@ -445,7 +450,6 @@ After the threshold change the Source view refused the definition: "Expected ','
 - Make the daily search safe to rerun, for example by skipping a day that already exists in `baseline`
 - Commit the `indexes.conf` stanzas for all eight indexes to the repo
 - Alert on the daily summary itself: a scheduled run with 0 results should raise an alert, not report success
-- Give Catalyst syslog a long override like `zeek:ssh` before it reaches two days in the window and becomes expected at 74 h
 - Drill into 10/27 (dns, zeek and suricata peak) and the suricata drop on 10/29–11/01
 - Volume checks on the stable sources (`network`, `wazuh`): alert outside about ±25% of the median
 - Send silence alerts to TheHive through Shuffle once the workflow handles more than Suricata alerts

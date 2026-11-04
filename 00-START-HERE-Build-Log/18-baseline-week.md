@@ -15,7 +15,7 @@ flowchart LR
 - **A summary index** `baseline`, defined alongside the other seven indexes; its `stash` events don't count against the license
 - **A daily report** `SOC - Baseline daily summary` (cron `15 0 * * *`): `tstats` counts per index, sourcetype, source and host by hour, then `collect` writes events and active hours for the previous UTC day
 - **A dashboard** `SOC - Baseline week` in Dashboard Studio: last-day tiles, a silence check, daily events per index, per-source volume and active hours, and a log-scale trend
-- **A silence alert** `SOC - Baseline silent log source` (cron `20 * * * *`): sources seen on two or more baseline days are expected, each with a threshold from its own behaviour (3, 8, 26 or 74 hours; 168 for `zeek:ssh`), one alert per silent source, throttled for 12 hours
+- **A silence alert** `SOC - Baseline silent log source` (cron `20 * * * *`): sources seen on two or more baseline days are expected, each with a threshold from its own behaviour (3, 8, 26 or 74 hours; 168 for `zeek:ssh`, 336 for Catalyst syslog), one alert per silent source, throttled for 12 hours
 - **The definitions in the repo:** both saved searches and the dashboard JSON under `siem/splunk/`
 
 ## What normal looks like
@@ -43,6 +43,7 @@ flowchart LR
 | The new alert would have fired for all 24 sources every hour | It was saved with the status search that was still on my clipboard | Replaced the search and verified search, trigger and throttle over REST |
 | Two dashboard tables showed "Unknown sid" and the tiles kept old numbers | Chained panels reused an expired base search | Gave every panel its own search |
 | The alert fired on 168 of 169 runs | `zeek:ssh` had no events after 10/25; I hadn't used SSH all week | Proved the sensor still logged SSH with one test session, gave `zeek:ssh` a 168 h override, and retuned the tiers from each source's longest gap |
+| A 168 h threshold could never fire | The search only looked 4 days back, so silence topped out at 96 h | Widened the lookback to 15 days and added a 336 h Catalyst override |
 
 ## Decisions
 - **Count with `tstats`:** it reads index metadata, so covering every index takes about a second
