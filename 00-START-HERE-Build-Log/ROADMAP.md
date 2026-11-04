@@ -1,6 +1,6 @@
 # 🗺️ Roadmap
 
-_Updated 2026-10-27._
+_Updated 2026-11-04._
 
 Where the build stands, what comes next, and the improvements queued alongside it. Write-ups for every finished step are in the [Build Log](README.md).
 
@@ -8,14 +8,14 @@ Where the build stands, what comes next, and the improvements queued alongside i
 
 ```mermaid
 flowchart LR
-    P1["1 · Foundation ✅<br/>segmentation, switch,<br/>8 SOC systems"] --> P2["2 · Telemetry + intel ✅<br/>Splunk, DNS, syslog, Sysmon,<br/>Wazuh, MISP, Zeek + Suricata"] --> P3["3 · Response + baseline 🚧<br/>TheHive, Shuffle,<br/>Velociraptor, baseline week"] --> P4["4 · Use-case loop<br/>build, test, tune,<br/>work cases"] --> P5["5 · Reporting<br/>weekly SOC report,<br/>monthly threat brief"]
+    P1["1 · Foundation ✅<br/>segmentation, switch,<br/>8 SOC systems"] --> P2["2 · Telemetry + intel ✅<br/>Splunk, DNS, syslog, Sysmon,<br/>Wazuh, MISP, Zeek + Suricata"] --> P3["3 · Response + baseline ✅<br/>TheHive, Shuffle,<br/>Velociraptor, baseline week"] --> P4["4 · Use-case loop<br/>build, test, tune,<br/>work cases"] --> P5["5 · Reporting<br/>weekly SOC report,<br/>monthly threat brief"]
 
     classDef done fill:#1f6f43,stroke:#2ea86b,color:#ffffff
     classDef now fill:#b8860b,stroke:#ffd166,color:#000000,stroke-width:3px
     classDef todo fill:#3a3f47,stroke:#8a929c,color:#ffffff
-    class P1,P2 done
-    class P3 now
-    class P4,P5 todo
+    class P1,P2,P3 done
+    class P4 now
+    class P5 todo
 ```
 
 ## Phase 3 in detail
@@ -24,7 +24,7 @@ flowchart LR
 flowchart TB
     subgraph P3["Phase 3 · Response + baseline"]
         direction LR
-        A1["3.1 TheHive ✅"] --> A2["3.2 Shuffle ✅<br/>gate met"] --> A3["3.3 Velociraptor ✅"] --> A4["3.4 Baseline week 🚧"]
+        A1["3.1 TheHive ✅"] --> A2["3.2 Shuffle ✅<br/>gate met"] --> A3["3.3 Velociraptor ✅"] --> A4["3.4 Baseline week ✅"]
     end
 
     subgraph B["3.4 Baseline week"]
@@ -37,13 +37,13 @@ flowchart TB
             direction LR
             R1["one day per run<br/>events + active hours<br/>per log source"]
         end
-        subgraph NEXT["Next"]
+        subgraph NEXT["Tuned"]
             direction LR
-            N1["watch the alert's<br/>first firings"] --> N2["tune thresholds"]
+            N1["zeek:ssh silent a week:<br/>idle, not blind"] --> N2["thresholds from<br/>longest gaps"]
         end
-        subgraph END["After 7 days"]
+        subgraph END["Closed 2026-11-04"]
             direction LR
-            E1["findings:<br/>normal ranges, anomalies"] --> E2["write-up 18"] --> E3["Phase 3 ✅"]
+            E1["findings: median<br/>454k events/day"] --> E2["write-up 18"] --> E3["Phase 3 ✅"]
         end
         DONE --> AUTO --> NEXT --> END
     end
@@ -60,10 +60,10 @@ flowchart TB
     classDef now fill:#b8860b,stroke:#ffd166,color:#000000,stroke-width:3px
     classDef auto fill:#1d4e89,stroke:#4c8ed9,color:#ffffff
     classDef todo fill:#3a3f47,stroke:#8a929c,color:#ffffff
-    class A1,A2,A3,D1,D2,D3,D4,D5 done
-    class A4 now
+    class A1,A2,A3,A4,D1,D2,D3,D4,D5,N1,N2,E1,E2,E3 done
     class R1 auto
-    class N1,N2,E1,E2,E3,F1,F2,F3,F4 todo
+    class F1 now
+    class F2,F3,F4 todo
 ```
 
 ## Improvement backlog
@@ -72,7 +72,7 @@ Each build step ends with a backlog. These are those items, grouped and put in t
 
 ```mermaid
 flowchart LR
-    subgraph T1["① Now · during the baseline week"]
+    subgraph T1["① Next · housekeeping"]
         direction TB
         a1["velo01: CA key down to<br/>one offline backup"]
         a2["Clean up leftover installers<br/>and test artifacts"]
@@ -126,7 +126,7 @@ flowchart LR
         e3["Velociraptor client<br/>event monitoring"]
         e4["Shuffle worker tuning,<br/>pin remaining images"]
         e5["Baseline search<br/>safe to rerun"]
-        e6["Tune silence thresholds;<br/>zeek:ssh, Catalyst expected?"]
+        e6["Catalyst syslog override;<br/>volume checks on stable sources"]
         e7["misp-modules<br/>if RAM allows"]
         e1 --> e2 --> e3 --> e4 --> e5 --> e6 --> e7
     end

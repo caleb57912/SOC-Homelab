@@ -4,7 +4,7 @@
 
 **A Security Operations Center segment defending my real home network, run like a production SOC.**
 
-<img src="https://img.shields.io/badge/Status-Phase_3:_Response-F2A900?style=for-the-badge">
+<img src="https://img.shields.io/badge/Status-Phase_4:_Use_cases-F2A900?style=for-the-badge">
 <img src="https://img.shields.io/badge/SIEM-Splunk-000000?style=for-the-badge&logo=splunk&logoColor=white">
 <img src="https://img.shields.io/badge/MITRE_ATT%26CK-Mapped-C8202F?style=for-the-badge">
 
@@ -17,7 +17,7 @@
 >
 > - **Phase 1 Foundation ✅** network segmentation, switch hardening, 8 SOC systems
 > - **Phase 2 Telemetry ✅** Splunk, Pi-hole DNS logging, firewall / switch / hypervisor logs, Sysmon endpoint telemetry, Wazuh, MISP threat intel, Zeek + Suricata on a SPAN feed
-> - **Phase 3 Response 🚧** TheHive case management, Shuffle SOAR enrichment (MISP, VirusTotal, AbuseIPDB), Velociraptor DFIR; baseline week recording
+> - **Phase 3 Response ✅** TheHive case management, Shuffle SOAR enrichment (MISP, VirusTotal, AbuseIPDB), Velociraptor DFIR, an 11-day baseline with a silence alert
 >
 > 🗺️ [**Roadmap →**](00-START-HERE-Build-Log/ROADMAP.md) what's next, and the improvement backlog
 
@@ -112,7 +112,7 @@ Endpoint Sysmon + Splunk UF + Wazuh agents · UDR firewall, IDS/IPS, DHCP & WiFi
 - [x] Design finalized
 - [x] Phase 1: Foundation
 - [x] Phase 2: Telemetry + intel
-- [ ] Phase 3: Response + baseline
+- [x] Phase 3: Response + baseline
 - [ ] Phase 4: Use-case loop
 - [ ] Phase 5: Reporting
 

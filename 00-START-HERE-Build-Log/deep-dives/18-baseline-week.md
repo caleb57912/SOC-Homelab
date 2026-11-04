@@ -1,6 +1,6 @@
 # 3.4 · Baseline Week (Deep Dive)
 
-> **Work in progress.** Recording started 2026-10-26 with 10/24 and 10/25 backfilled; 10/26 backfilled on 2026-10-27 after the first scheduled run wrote nothing. The dashboard and the silence alert are built. Still to come: seven recorded days and the findings.
+> **Result:** 11 days recorded (2026-10-24 to 11-03), 7 of 7 scheduled runs successful, a dashboard and a silence alert tuned from the recorded gaps. Findings are in [The recorded week](#the-recorded-week).
 
 A baseline is a record of what normal looks like, so that later detections have something to be measured against. For one week I recorded, for every log source, how many events arrived each day and in how many of the 24 hours it was active. The numbers go into a summary index, an index that holds search results instead of raw logs, written by a scheduled search.
 
@@ -152,21 +152,25 @@ index=baseline source=baseline_daily earliest=-15d@d latest=@d
 | append [| tstats latest(_time) as last_seen where index=* NOT index=baseline earliest=-4d by index sourcetype source host]
 | stats max(days_seen) as days_seen max(avg_hours) as avg_hours max(last_seen) as last_seen by index sourcetype source host
 | where isnotnull(days_seen)
-| eval threshold_h=case(avg_hours>=20,2, avg_hours>=8,26, true(),74)
+| eval threshold_h=case(sourcetype="zeek:ssh",168, avg_hours>=23,3, avg_hours>=20,8, avg_hours>=8,26, true(),74)
 | eval silent_h=round((now()-coalesce(last_seen,relative_time(now(),"-4d")))/3600,1)
 | where silent_h>threshold_h
 | eval avg_hours=round(avg_hours,1), last_seen=if(isnull(last_seen),"none in 4 days",strftime(last_seen,"%F %T"))
 | table index sourcetype source host days_seen avg_hours threshold_h silent_h last_seen
 ```
 
-| Average active hours per day | Example sources (10/24–10/26) | Silent longer than |
+The thresholds below are the tuned ones from [the recorded week](#threshold-tuning); the first version used 2, 26 and 74 hours.
+
+| Average active hours per day | Example sources | Silent longer than |
 | --- | --- | --- |
-| 20 or more | Pi-hole, UDR and Proxmox syslog, Sysmon, Security, Suricata, Wazuh, Zeek conn/dns/ssl/http/files/notice/x509/weird | 2 h |
+| `zeek:ssh` (override) | Written only when an SSH session crosses the SPAN | 168 h |
+| 23 or more | Pi-hole, UDR and Proxmox syslog, Sysmon, Security, Application, Suricata, Wazuh, Zeek conn/dns/ssl/http/files/notice | 3 h |
+| 20 to 22 | `zeek:weird`, `zeek:x509` | 8 h |
 | 8 to 19 | System, `zeek:software`, `zeek:known_services` | 26 h |
 | Under 8 | PowerShell, `zeek:dhcp`, `zeek:known_hosts`, `zeek:ssh` | 74 h |
 | Seen on fewer than 2 days | Catalyst syslog, `intel` | Not expected yet |
 
-The thresholds come from three days of data and get tuned after the full week. A source that stops entirely shows `none in 4 days` because the `coalesce` counts it as silent since the start of the window.
+A source that stops entirely shows `none in 4 days` because the `coalesce` counts it as silent since the start of the window.
 
 Saved as the alert `SOC - Baseline silent log source` (search app, shared in app): cron `20 * * * *`, trigger when the number of results is greater than 0, once per result, throttled 12 hours on `index,sourcetype,source,host`, action Add to Triggered Alerts, severity Medium. The configuration is in [`siem/splunk/saved-searches/soc_baseline_silent_log_source.conf`](../../siem/splunk/saved-searches/soc_baseline_silent_log_source.conf).
 
@@ -185,6 +189,114 @@ The REST check of the new alert showed the status search (ending in `sort` and `
 ```
 
 Result: the search ends in `where silent_h>threshold_h` and the alert `table`; `alert_type` is `number of events`, `alert_comparator` is `greater than`, `alert_threshold` is `0`, `alert.digest_mode` is `0` (once per result). On Splunk 10 the trigger settings come back over REST under those names, not `counttype`, `relation` and `quantity` as in savedsearches.conf.
+
+## The recorded week
+
+### Runs
+
+| Check | Search | Result |
+| --- | --- | --- |
+| Days in the index | `index=baseline source=baseline_daily \| stats count as rows sum(events) as events by day` (All time) | 11 days, 10/24–11/03, 23–24 rows each, no duplicates |
+| Scheduled runs, 7 days | `index=_internal sourcetype=scheduler (savedsearch_name="SOC - Baseline daily summary" OR savedsearch_name="SOC - Baseline silent log source") status=* \| stats count as runs sum(eval(if(status="success",1,0))) as ok max(result_count) as max_results by savedsearch_name` | Daily summary 7/7 successful, at most 24 rows; silence alert 169/169 successful, at most 3 results |
+
+The alert's action, Add to Triggered Alerts, doesn't show up in the scheduler's `alert_actions` field, and triggered alerts expire after 24 hours, so I read the firing history from the scheduler log instead: `index=_internal sourcetype=scheduler savedsearch_name="SOC - Baseline silent log source" result_count>0 | table _time result_count sid`.
+
+### Daily volume per index
+
+```
+index=baseline source=baseline_daily | dedup day orig_index orig_sourcetype orig_source orig_host | chart sum(events) over day by orig_index | addtotals
+```
+
+| Day (UTC) | dns | network | os | suricata | wazuh | zeek | Total |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Sat 10/24 | 164,076 | 31,506 | 47,324 | 12,250 | 764 | 275,878 | 531,798 |
+| Sun 10/25 | 112,708 | 32,204 | 44,333 | 10,656 | 698 | 219,402 | 420,001 |
+| Mon 10/26 | 105,403 | 32,778 | 45,696 | 10,336 | 826 | 275,859 | 470,898 |
+| Tue 10/27 | 174,440 | 33,925 | 69,282 | 22,136 | 697 | 330,973 | 631,453 |
+| Wed 10/28 | 128,492 | 32,226 | 77,909 | 8,165 | 759 | 217,097 | 464,648 |
+| Thu 10/29 | 121,840 | 33,799 | 52,879 | 3,654 | 948 | 200,354 | 413,474 |
+| Fri 10/30 | 76,158 | 34,876 | 42,848 | 2,720 | 869 | 171,340 | 328,811 |
+| Sat 10/31 | 77,724 | 35,137 | 54,902 | 2,109 | 850 | 169,775 | 340,497 |
+| Sun 11/01 | 83,645 | 37,167 | 55,818 | 2,284 | 967 | 178,253 | 358,134 |
+| Mon 11/02 | 145,379 | 28,973 | 76,009 | 5,791 | 713 | 209,823 | 466,688 |
+| Tue 11/03 | 141,713 | 28,861 | 68,548 | 10,042 | 946 | 204,153 | 454,263 |
+
+| Index | Median per day | Range | Spread from median |
+| --- | --- | --- | --- |
+| zeek | 209,823 | 169,775 – 330,973 | −19% / +58% |
+| dns | 121,840 | 76,158 – 174,440 | −37% / +43% |
+| os | 54,902 | 42,848 – 77,909 | −22% / +42% |
+| network | 32,778 | 28,861 – 37,167 | −12% / +13% |
+| suricata | 8,165 | 2,109 – 22,136 | −74% / +171% |
+| wazuh | 826 | 697 – 967 | −16% / +17% |
+| **Total** | **454,263** | 328,811 – 631,453 | −28% / +39% |
+
+### Findings
+
+- **Two kinds of source.** `network` (UDR and Proxmox syslog) and `wazuh` stayed within about ±15% of their medians every day. They are machine-generated and don't depend on what anyone in the house is doing, so a volume check on them can be tight. `dns`, `zeek` and `os` follow household and PC use and swing by 40–60%.
+- **Suricata is the least stable source.** It went from 10–12k alerts a day to 2–3k on 10/29–11/01, then back to 10k by 11/03. A fixed volume threshold would be useless here; what matters is which signatures fire, not how many.
+- **10/27 was the busiest day** (631,453 events, +39%). `dns`, `zeek` and `suricata` all peaked that day, and `suricata` doubled. I didn't trace the cause during the baseline; the drill-down is on the backlog.
+- **10/30–11/01 was the quietest stretch** (329k–358k). `dns` and `zeek` dropped together while `network` and `wazuh` didn't, which fits less household traffic rather than a collection problem. The first weekend (10/24–25) was not low, so it isn't a weekday pattern.
+- **Event-driven sources aren't silent by failure.** `zeek:ssh` and Catalyst syslog only log when someone connects to or changes something. The switch logged on one day in the window (4 events on 11/03).
+- **`intel` never appeared in the daily summary,** so it isn't an expected source and is monitored by the MISP lookup's own schedule instead.
+
+### Issue: the silence alert fired on 168 of 169 runs
+
+Every hourly run from 10/28 onward returned one result, and the 10/31 17:20 run returned two. The 12-hour throttle kept Triggered Alerts to about two entries a day, but the search itself was flagging the same source all week.
+
+The longest gap per source over the eight full days before 11/04:
+
+```
+| tstats count where index=* NOT index=baseline earliest=-8d@d latest=@d by _time span=1h index sourcetype source host
+| sort 0 index sourcetype source host _time
+| streamstats current=f last(_time) as prev by index sourcetype source host
+| eval gap_h=round((_time-prev)/3600-1,0)
+| stats max(gap_h) as max_gap_h count as active_hours earliest(_time) as first latest(_time) as last by index sourcetype source host
+| eval first=strftime(first,"%F %H:%M"), last=strftime(last,"%F %H:%M")
+| sort - max_gap_h
+```
+
+`streamstats` gives each hourly bucket the time of the previous bucket for the same source, so `gap_h` is the number of empty hours between them and `max(gap_h)` is the longest silence that source had.
+
+| Source | Longest gap | First threshold |
+| --- | --- | --- |
+| `zeek:ssh` | No events in the 8 days | 74 h |
+| `zeek:known_services` | 15 h | 74 h |
+| PowerShell/Operational | 12 h | 74 h |
+| `zeek:dhcp` | 11 h | 74 h |
+| `zeek:known_hosts` | 10 h | 74 h |
+| `zeek:software` | 8 h | 26 h |
+| `zeek:weird` | 5 h | 2 h |
+| System | 4 h | 26 h |
+| Application, `wazuh:alerts` | 2 h | 2 h |
+| Suricata, `zeek:x509` | 1 h | 2 h |
+| Pi-hole | 0 h | 2 h |
+
+`zeek:ssh` was the steady result: last seen 10/25 01:49, past 74 hours on 10/28. `zeek:weird`, with a 5-hour gap against a 2-hour threshold, is the likely second result on 10/31.
+
+I hadn't used SSH all week, so the question was whether the sensor had gone blind to it. I opened one session from my PC to splunk01 (`ssh caleb@10.30.0.10 exit`) and searched `index=zeek sourcetype=zeek:ssh | table _time id.orig_h id.resp_h auth_success client server` over the last 15 minutes: one row, 192.168.1.11 → 10.30.0.10, `auth_success=true`. The SPAN copies PC traffic up to three times, but Zeek tracks a connection by its addresses and ports, so the copies merge into one `ssh.log` entry. The pipeline worked; the source was simply idle.
+
+The alert did its job: a source that had always reported stopped, and it said so. The silence was explained by my own behaviour, which is a tuning result, not a broken detection.
+
+### Threshold tuning
+
+| Average active hours per day | Before | After | Reason |
+| --- | --- | --- | --- |
+| `zeek:ssh` | 74 h | 168 h | Event-driven; still alerts if a whole week of admin SSH never reaches the sensor |
+| 23 or more | 2 h | 3 h | Application and Wazuh reached 2-hour gaps |
+| 20 to 22 | 2 h | 8 h | `zeek:weird` had a 5-hour gap |
+| 8 to 19 | 26 h | 26 h | Longest gap 8 h |
+| Under 8 | 74 h | 74 h | Longest gap 15 h |
+
+I changed the threshold line through Edit Search and read it back over REST: `| rest /servicesNS/-/-/saved/searches splunk_server=local | search title="SOC - Baseline silent log source" | table search description`. The override comes first because `case()` returns the value of the first condition that matches; after the hour tiers, `zeek:ssh` (about 2 active hours a day) would fall through to 74 h.
+
+### Issue: silent sources sorted to the bottom
+
+The dashboard's silence table never showed `zeek:ssh` at the top while it was silent. `sort - status` sorts descending, and lowercase `ok` sorts after uppercase `SILENT`, so descending put every `ok` row first. I changed it to `sort status`.
+
+### Issue: a quote broke the dashboard JSON
+
+After the threshold change the Source view refused the definition: "Expected ',' or ']' after property value in JSON". Each search lives inside a JSON string, and the `"zeek:ssh"` I added ended that string early. Inside JSON the quotes have to be written `\"zeek:ssh\"`. I fixed the file and checked it parses before pasting.
 
 ## Evidence
 
@@ -292,10 +404,48 @@ Result: the search ends in `where silent_h>threshold_h` and the alert `table`; `
 
 ![The dashboard with the silence panel.](../../screenshots/build-log/18-baseline-week/26-dashboard-silence-panel.png)
 
+**11 days in the summary index, one copy each.**
+
+![11 days in the summary index, one copy each.](../../screenshots/build-log/18-baseline-week/27-eleven-days-recorded.png)
+
+**The week's scheduled runs: 7/7 and 169/169 successful.**
+
+![The week's scheduled runs: 7/7 and 169/169 successful.](../../screenshots/build-log/18-baseline-week/28-scheduled-runs-week.png)
+
+**Silence alert runs with results: nearly every hour from 10/28.**
+
+![Silence alert runs with results: nearly every hour from 10/28.](../../screenshots/build-log/18-baseline-week/29-silence-alert-runs.png)
+
+**Longest gap per source over eight days.**
+
+![Longest gap per source over eight days.](../../screenshots/build-log/18-baseline-week/30-longest-gap-per-source.png)
+
+**The dashboard with 11 days.**
+
+![The dashboard with 11 days.](../../screenshots/build-log/18-baseline-week/31-dashboard-eleven-days.png)
+
+**One SSH session reaching ssh.log.**
+
+![One SSH session reaching ssh.log.](../../screenshots/build-log/18-baseline-week/32-zeek-ssh-test.png)
+
+**The retuned alert read back over REST.**
+
+![The retuned alert read back over REST.](../../screenshots/build-log/18-baseline-week/33-alert-retuned.png)
+
+**Daily volume per index.**
+
+![Daily volume per index.](../../screenshots/build-log/18-baseline-week/34-daily-volume-per-index.png)
+
+**The final dashboard.**
+
+![The final dashboard.](../../screenshots/build-log/18-baseline-week/35-dashboard-final.png)
+
 ## Backlog
 
 - Make the daily search safe to rerun, for example by skipping a day that already exists in `baseline`
 - Commit the `indexes.conf` stanzas for all eight indexes to the repo
 - Alert on the daily summary itself: a scheduled run with 0 results should raise an alert, not report success
-- Tune the silence thresholds after seven days; decide whether `zeek:ssh` and Catalyst syslog are expected sources
+- Give Catalyst syslog a long override like `zeek:ssh` before it reaches two days in the window and becomes expected at 74 h
+- Drill into 10/27 (dns, zeek and suricata peak) and the suricata drop on 10/29–11/01
+- Volume checks on the stable sources (`network`, `wazuh`): alert outside about ±25% of the median
 - Send silence alerts to TheHive through Shuffle once the workflow handles more than Suricata alerts
