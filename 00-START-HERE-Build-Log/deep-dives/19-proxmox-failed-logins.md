@@ -87,7 +87,7 @@ Reading the alert back over REST:
 | rest /servicesNS/-/-/saved/searches splunk_server=local | search title="SOC - 4.1 Proxmox failed logins" | table search cron_schedule alert_type alert_comparator alert_threshold alert.digest_mode alert.suppress alert.suppress.fields alert.suppress.period alert.severity alert.expires
 ```
 
-showed `alert.digest_mode=1` (Once) and an empty `alert.suppress.fields`. With Once, a run produces one alert whatever the number of sources; with no throttle field, the 30-minute suppression covers the whole alert, so a second source during that half hour would be missed. The throttle field only appears in the form after choosing For each result. I changed both through Edit Alert. Severity read back as 4, which is High in Splunk's 1–5 scale (5 is Critical).
+showed `alert.digest_mode=1` (Once) and an empty `alert.suppress.fields`. With Once, a run produces one alert whatever the number of sources; with no throttle field, the 30-minute suppression covers the whole alert, so a second source during that half hour would be missed. The throttle field only appears in the form after choosing For each result. I changed both through Edit Alert and read them back: `alert.digest_mode=0`, `alert.suppress.fields=src_ip`, `alert.suppress.period=30m`, with the search unchanged (`earliest=-15m@m`, `src_ip!="192.168.1.11"`). Severity read back as 4, which is High in Splunk's 1–5 scale (5 is Critical).
 
 ## Tests
 
@@ -271,6 +271,10 @@ True positive, authorised test, no impact. The rule fired on what it claims to d
 **Case #2 closed as True Positive.**
 
 ![Case #2 closed as True Positive.](../../screenshots/build-log/19-proxmox-failed-logins/23-case-closed.png)
+
+**REST read-back after the fix: for each result, throttled on src_ip, search unchanged.**
+
+![REST read-back after the fix: for each result, throttled on src_ip, search unchanged.](../../screenshots/build-log/19-proxmox-failed-logins/24-rest-trigger-throttle-fixed.png)
 
 ## Backlog
 
