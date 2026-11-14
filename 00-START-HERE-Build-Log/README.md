@@ -39,3 +39,9 @@ What's next, and the improvement backlog: [Roadmap](ROADMAP.md).
 | 3.2 | [Shuffle](16-shuffle.md) | Shuffle 2.3.0 sized into 6 GB with internal ports on localhost and public default secrets replaced; Suricata detections flow Splunk → Shuffle webhook → TheHive alert, enriched by MISP, VirusTotal and AbuseIPDB (Phase 3 gate met); traced stuck runs to Orborus ignoring its replica setting, and a blank enrichment line to a rotated key | [details](deep-dives/16-shuffle.md) |
 | 3.3 | [Velociraptor](17-velociraptor.md) | Velociraptor 0.77.1 in a 1 GB LXC as a non-root systemd service, GUI on the SOC address and API/monitoring on localhost; GPG-verified binary and MSI, client config with no private key, repacked MSI enrolled my PC; first Pslist collection (316 rows) triaged by signature and path with every unsigned process explained | [details](deep-dives/17-velociraptor.md) |
 | 3.4 | [Baseline week](18-baseline-week.md) | 11 days of events and active hours per log source in a summary index (median 454k/day); Dashboard Studio dashboard; hourly silence alert on expected sources that caught `zeek:ssh` going quiet for a week, confirmed as idle rather than blind with a test session, then retuned from each source's longest gap; traced a "successful" empty run to an overwritten report search | [details](deep-dives/18-baseline-week.md) |
+
+## Phase 4: Use-case loop 🚧
+
+| Step | Summary | Highlights | Deep dive |
+| --- | --- | --- | --- |
+| 4.1 | [Failed Proxmox logins](19-proxmox-failed-logins.md) | Alert for password guessing, username guessing and failures from any non-admin IP, thresholds from 30 days of history; each condition tested alone with positive and negative cases; worked as TheHive case #2 (true positive, authorised test); found that Sysmon doesn't record browser connections to internal admin UIs | [details](deep-dives/19-proxmox-failed-logins.md) |

@@ -1,6 +1,6 @@
 # 🗺️ Roadmap
 
-_Updated 2026-11-04._
+_Updated 2026-11-13._
 
 Where the build stands, what comes next, and the improvements queued alongside it. Write-ups for every finished step are in the [Build Log](README.md).
 
@@ -50,7 +50,7 @@ flowchart TB
 
     subgraph P4["Phase 4 · Use-case loop"]
         direction LR
-        F1["4.1 Failed<br/>Proxmox logins"] --> F2["4.2 New device<br/>on the network"] --> F3["4.3 Vulnerable<br/>software"] --> F4["4.4 IoC match<br/>DNS vs MISP"]
+        F1["4.1 Failed<br/>Proxmox logins ✅"] --> F2["4.2 New device<br/>on the network"] --> F3["4.3 Vulnerable<br/>software"] --> F4["4.4 IoC match<br/>DNS vs MISP"]
     end
 
     A4 --> B
@@ -62,8 +62,9 @@ flowchart TB
     classDef todo fill:#3a3f47,stroke:#8a929c,color:#ffffff
     class A1,A2,A3,A4,D1,D2,D3,D4,D5,N1,N2,E1,E2,E3 done
     class R1 auto
-    class F1 now
-    class F2,F3,F4 todo
+    class F1 done
+    class F2 now
+    class F3,F4 todo
 ```
 
 ## Improvement backlog
@@ -95,7 +96,8 @@ flowchart LR
         b8["Velociraptor linked to<br/>TheHive/Shuffle"]
         b9["Alert when the daily<br/>baseline run writes 0 rows"]
         b10["Silence alerts<br/>into TheHive"]
-        b1 --> b2 --> b3 --> b4 --> b5 --> b6 --> b7 --> b8 --> b9 --> b10
+        b11["Investigation search catalog:<br/>saved, parameterised searches as code"]
+        b1 --> b2 --> b3 --> b4 --> b5 --> b6 --> b7 --> b8 --> b9 --> b10 --> b11
     end
 
     subgraph T3["③ Hardening · access + encryption"]
@@ -142,7 +144,7 @@ flowchart LR
     classDef cov fill:#1f6f43,stroke:#2ea86b,color:#ffffff
     classDef tune fill:#3a3f47,stroke:#8a929c,color:#ffffff
     class a1,a2,a3,a4,a5,a6 now
-    class b1,b2,b3,b4,b5,b6,b7,b8,b9,b10 pre
+    class b1,b2,b3,b4,b5,b6,b7,b8,b9,b10,b11 pre
     class c1,c2,c3,c4,c5,c6 hard
     class d1,d2,d3,d4,d5 cov
     class e1,e2,e3,e4,e5,e6,e7 tune
